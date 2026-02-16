@@ -1,0 +1,156 @@
+import { Elysia, t } from "elysia";
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/index.js";
+import { installations, installationSettings } from "../db/schema.js";
+import { encrypt } from "../crypto.js";
+import { loadConfig } from "../config.js";
+
+export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
+  .get("/:installationId", async ({ params, set }) => {
+    const db = getDb();
+    const installationId = parseInt(params.installationId);
+
+    const [installation] = await db
+      .select()
+      .from(installations)
+      .where(eq(installations.githubInstallationId, installationId))
+      .limit(1);
+
+    if (!installation) {
+      set.status = 404;
+      return { error: "Installation not found" };
+    }
+
+    const [settings] = await db
+      .select()
+      .from(installationSettings)
+      .where(eq(installationSettings.installationId, installation.id))
+      .limit(1);
+
+    if (!settings) {
+      return {
+        installationId,
+        llmProvider: "openai",
+        llmModel: "gpt-4o",
+        reviewStyle: "both",
+        hasApiKey: false,
+        ignorePaths: [".lock", "*.min.js", "*.min.css"],
+        customInstructions: "",
+        maxFilesPerReview: 20,
+        enabled: true,
+      };
+    }
+
+    return {
+      installationId,
+      llmProvider: settings.llmProvider,
+      llmModel: settings.llmModel,
+      reviewStyle: settings.reviewStyle,
+      hasApiKey: !!settings.apiKeyEncrypted,
+      ignorePaths: settings.ignorePaths,
+      customInstructions: settings.customInstructions ?? "",
+      maxFilesPerReview: settings.maxFilesPerReview,
+      enabled: settings.enabled,
+    };
+  })
+  .put(
+    "/:installationId",
+    async ({ params, body, set }) => {
+      const db = getDb();
+      const config = loadConfig();
+      const githubInstallationId = parseInt(params.installationId);
+
+      const [installation] = await db
+        .select()
+        .from(installations)
+        .where(eq(installations.githubInstallationId, githubInstallationId))
+        .limit(1);
+
+      if (!installation) {
+        // Auto-create installation record
+        const [newInstall] = await db
+          .insert(installations)
+          .values({
+            githubInstallationId,
+            githubAccountLogin: body.accountLogin ?? "unknown",
+            githubAccountType: body.accountType ?? "User",
+          })
+          .returning();
+
+        return await upsertSettings(db, config, newInstall.id, body);
+      }
+
+      return await upsertSettings(db, config, installation.id, body);
+    },
+    {
+      body: t.Object({
+        llmProvider: t.Optional(
+          t.Union([
+            t.Literal("openai"),
+            t.Literal("anthropic"),
+            t.Literal("gemini"),
+          ])
+        ),
+        llmModel: t.Optional(t.String()),
+        reviewStyle: t.Optional(
+          t.Union([
+            t.Literal("inline"),
+            t.Literal("summary"),
+            t.Literal("both"),
+          ])
+        ),
+        apiKey: t.Optional(t.String()),
+        ignorePaths: t.Optional(t.Array(t.String())),
+        customInstructions: t.Optional(t.String()),
+        maxFilesPerReview: t.Optional(t.Number()),
+        enabled: t.Optional(t.Boolean()),
+        accountLogin: t.Optional(t.String()),
+        accountType: t.Optional(t.String()),
+      }),
+    }
+  );
+
+async function upsertSettings(
+  db: ReturnType<typeof getDb>,
+  config: { ENCRYPTION_KEY: string },
+  installationId: number,
+  body: Record<string, unknown>
+) {
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+  if (body.llmProvider) updateData.llmProvider = body.llmProvider;
+  if (body.llmModel) updateData.llmModel = body.llmModel;
+  if (body.reviewStyle) updateData.reviewStyle = body.reviewStyle;
+  if (body.ignorePaths) updateData.ignorePaths = body.ignorePaths;
+  if (body.customInstructions !== undefined)
+    updateData.customInstructions = body.customInstructions;
+  if (body.maxFilesPerReview) updateData.maxFilesPerReview = body.maxFilesPerReview;
+  if (body.enabled !== undefined) updateData.enabled = body.enabled;
+
+  if (body.apiKey && typeof body.apiKey === "string") {
+    const encrypted = encrypt(body.apiKey, config.ENCRYPTION_KEY);
+    updateData.apiKeyEncrypted = encrypted.ciphertext;
+    updateData.apiKeyIv = encrypted.iv;
+    updateData.apiKeyAuthTag = encrypted.authTag;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(installationSettings)
+    .where(eq(installationSettings.installationId, installationId))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(installationSettings)
+      .set(updateData)
+      .where(eq(installationSettings.id, existing.id));
+  } else {
+    await db.insert(installationSettings).values({
+      installationId,
+      ...updateData,
+    });
+  }
+
+  return { status: "saved" };
+}

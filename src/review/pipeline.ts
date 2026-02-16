@@ -1,0 +1,201 @@
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/index.js";
+import { installations, installationSettings, reviews } from "../db/schema.js";
+import { getOctokit, fetchPRDiff } from "../github/client.js";
+import { getProvider } from "../llm/registry.js";
+import { decrypt } from "../crypto.js";
+import { loadConfig } from "../config.js";
+import { parseDiff, filterFiles, chunkDiffs } from "./differ.js";
+import { postReviewToGitHub } from "./poster.js";
+import { fetchRepoConfig, mergeConfig } from "../repo-config.js";
+import { AsyncQueue } from "../queue.js";
+import type { ReviewResult } from "../llm/types.js";
+
+export interface ReviewJob {
+  installationId: number;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  prTitle: string;
+  commitSha: string;
+  baseBranch: string;
+  repoFullName: string;
+}
+
+const reviewQueue = new AsyncQueue<ReviewJob>(processReview, 3);
+
+export function enqueueReview(job: ReviewJob): void {
+  reviewQueue.enqueue(job).catch((err) => {
+    console.error(`Review failed for ${job.repoFullName}#${job.prNumber}:`, err);
+  });
+}
+
+async function processReview(job: ReviewJob): Promise<void> {
+  const db = getDb();
+  const config = loadConfig();
+  const startTime = Date.now();
+
+  // Find installation
+  const [installation] = await db
+    .select()
+    .from(installations)
+    .where(eq(installations.githubInstallationId, job.installationId))
+    .limit(1);
+
+  if (!installation) {
+    console.warn(`Unknown installation: ${job.installationId}`);
+    return;
+  }
+
+  // Get settings
+  const [settings] = await db
+    .select()
+    .from(installationSettings)
+    .where(eq(installationSettings.installationId, installation.id))
+    .limit(1);
+
+  if (!settings || !settings.enabled) {
+    console.log(`Reviews disabled for installation ${job.installationId}`);
+    return;
+  }
+
+  if (!settings.apiKeyEncrypted || !settings.apiKeyIv || !settings.apiKeyAuthTag) {
+    console.warn(`No API key configured for installation ${job.installationId}`);
+    return;
+  }
+
+  // Create review record
+  const [review] = await db
+    .insert(reviews)
+    .values({
+      installationId: installation.id,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      prTitle: job.prTitle,
+      commitSha: job.commitSha,
+      llmProvider: settings.llmProvider,
+      llmModel: settings.llmModel,
+      status: "processing",
+    })
+    .returning();
+
+  try {
+    const octokit = await getOctokit(job.installationId);
+
+    // Fetch and merge repo config
+    const repoConfig = await fetchRepoConfig(
+      octokit,
+      job.owner,
+      job.repo,
+      job.baseBranch
+    );
+    const mergedConfig = mergeConfig(settings, repoConfig);
+
+    if (!mergedConfig.enabled) {
+      await db
+        .update(reviews)
+        .set({ status: "completed", summaryComment: "Skipped (disabled via repo config)" })
+        .where(eq(reviews.id, review.id));
+      return;
+    }
+
+    // Fetch diff
+    const rawDiff = await fetchPRDiff(octokit, job.owner, job.repo, job.prNumber);
+    const files = parseDiff(rawDiff);
+    const filtered = filterFiles(
+      files,
+      mergedConfig.ignorePaths,
+      mergedConfig.maxFilesPerReview
+    );
+
+    if (filtered.length === 0) {
+      await db
+        .update(reviews)
+        .set({ status: "completed", summaryComment: "No reviewable files." })
+        .where(eq(reviews.id, review.id));
+      return;
+    }
+
+    // Decrypt API key
+    const apiKey = decrypt(
+      {
+        ciphertext: settings.apiKeyEncrypted,
+        iv: settings.apiKeyIv,
+        authTag: settings.apiKeyAuthTag,
+      },
+      config.ENCRYPTION_KEY
+    );
+
+    // Call LLM
+    const provider = getProvider(settings.llmProvider);
+    const chunks = chunkDiffs(filtered);
+
+    let combinedResult: ReviewResult = { summary: "", comments: [] };
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+
+    for (const chunk of chunks) {
+      const result = await provider.review(
+        {
+          diff: chunk,
+          prTitle: job.prTitle,
+          customInstructions: mergedConfig.customInstructions,
+        },
+        apiKey,
+        settings.llmModel
+      );
+      combinedResult.comments.push(...result.comments);
+      if (result.summary) {
+        combinedResult.summary += (combinedResult.summary ? "\n\n" : "") + result.summary;
+      }
+      if (result.usage) {
+        totalPromptTokens += result.usage.promptTokens;
+        totalCompletionTokens += result.usage.completionTokens;
+      }
+    }
+
+    // Post review
+    await postReviewToGitHub(
+      octokit,
+      job.owner,
+      job.repo,
+      job.prNumber,
+      job.commitSha,
+      combinedResult.summary,
+      combinedResult.comments,
+      mergedConfig.reviewStyle
+    );
+
+    const durationMs = Date.now() - startTime;
+
+    await db
+      .update(reviews)
+      .set({
+        status: "completed",
+        summaryComment: combinedResult.summary,
+        inlineCommentCount: combinedResult.comments.length,
+        promptTokens: totalPromptTokens,
+        completionTokens: totalCompletionTokens,
+        durationMs,
+        updatedAt: new Date(),
+      })
+      .where(eq(reviews.id, review.id));
+
+    console.log(
+      `Review completed for ${job.repoFullName}#${job.prNumber} in ${durationMs}ms`
+    );
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`Review error for ${job.repoFullName}#${job.prNumber}:`, errorMessage);
+
+    await db
+      .update(reviews)
+      .set({
+        status: "failed",
+        errorMessage,
+        durationMs: Date.now() - startTime,
+        updatedAt: new Date(),
+      })
+      .where(eq(reviews.id, review.id));
+  }
+}

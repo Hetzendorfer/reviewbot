@@ -1,0 +1,33 @@
+{
+  "name": "reviewbot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@elysiajs/cors": "^1.2.0",
+    "@elysiajs/static": "^1.2.0",
+    "@google/generative-ai": "^0.24.0",
+    "@octokit/auth-app": "^7.1.4",
+    "@octokit/webhooks": "^13.4.2",
+    "drizzle-orm": "^0.38.4",
+    "elysia": "^1.2.12",
+    "minimatch": "^10.0.1",
+    "octokit": "^4.1.2",
+    "openai": "^4.82.0",
+    "postgres": "^3.4.5",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4",
+    "drizzle-kit": "^0.30.4",
+    "typescript": "^5.7.3"
+  }
+}
