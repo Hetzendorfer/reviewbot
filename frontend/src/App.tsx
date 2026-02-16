@@ -24,6 +24,7 @@ function App() {
 
   useEffect(() => {
     if (!installationId) return;
+    
     fetch(`/api/settings/${installationId}`)
       .then((r) => r.json())
       .then((data: any) => {

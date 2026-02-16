@@ -2,8 +2,11 @@
   "name": "reviewbot",
   "version": "1.0.0",
   "type": "module",
+  "workspaces": ["frontend"],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
+    "dev:frontend": "bun run --filter reviewbot-frontend dev",
+    "build:frontend": "bun run --filter reviewbot-frontend build",
     "start": "bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -12,7 +15,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@elysiajs/cors": "^1.2.0",
-    "@elysiajs/static": "^1.2.0",
     "@google/generative-ai": "^0.24.0",
     "@octokit/auth-app": "^7.1.4",
     "@octokit/webhooks": "^13.4.2",
