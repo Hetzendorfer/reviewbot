@@ -5,6 +5,74 @@ import { installations, installationSettings } from "../db/schema.js";
 import { encrypt } from "../crypto.js";
 import { loadConfig } from "../config.js";
 
+const MAX_INSTRUCTIONS_LENGTH = 2000;
+const MAX_IGNORE_PATHS = 50;
+const MAX_PATH_LENGTH = 256;
+
+function validateSettings(body: Record<string, unknown>): string | null {
+  if (body.customInstructions && typeof body.customInstructions === "string") {
+    if (body.customInstructions.length > MAX_INSTRUCTIONS_LENGTH) {
+      return `Custom instructions too long (max ${MAX_INSTRUCTIONS_LENGTH} chars)`;
+    }
+  }
+
+  if (body.ignorePaths && Array.isArray(body.ignorePaths)) {
+    if (body.ignorePaths.length > MAX_IGNORE_PATHS) {
+      return `Too many ignore paths (max ${MAX_IGNORE_PATHS})`;
+    }
+    for (const path of body.ignorePaths) {
+      if (typeof path !== "string" || path.length > MAX_PATH_LENGTH) {
+        return "Invalid ignore path";
+      }
+    }
+  }
+
+  if (body.maxFilesPerReview !== undefined) {
+    const max = Number(body.maxFilesPerReview);
+    if (isNaN(max) || max < 1 || max > 100) {
+      return "maxFilesPerReview must be between 1 and 100";
+    }
+  }
+
+  return null;
+}
+
+async function validateApiKey(
+  provider: string,
+  apiKey: string
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    switch (provider) {
+      case "openai": {
+        const { OpenAI } = await import("openai");
+        const client = new OpenAI({ apiKey });
+        await client.models.list();
+        return { valid: true };
+      }
+      case "anthropic": {
+        if (!apiKey.startsWith("sk-ant-")) {
+          return { valid: false, error: "Anthropic keys must start with 'sk-ant-'" };
+        }
+        if (apiKey.length < 50) {
+          return { valid: false, error: "Anthropic key appears too short" };
+        }
+        return { valid: true };
+      }
+      case "gemini": {
+        if (!/^[A-Za-z0-9_-]{30,}$/.test(apiKey)) {
+          return { valid: false, error: "Invalid Gemini key format" };
+        }
+        return { valid: true };
+      }
+      default:
+        return { valid: false, error: "Unknown provider" };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { valid: false, error: `API key validation failed: ${message}` };
+  }
+}
+
 export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
   .get("/:installationId", async ({ params, set }) => {
     const db = getDb();
@@ -56,6 +124,12 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
   .put(
     "/:installationId",
     async ({ params, body, set }) => {
+      const validationError = validateSettings(body as Record<string, unknown>);
+      if (validationError) {
+        set.status = 400;
+        return { error: validationError };
+      }
+
       const db = getDb();
       const config = loadConfig();
       const githubInstallationId = parseInt(params.installationId);
@@ -77,10 +151,14 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
           })
           .returning();
 
-        return await upsertSettings(db, config, newInstall.id, body);
+        const result = await upsertSettings(db, config, newInstall.id, body);
+        if ("error" in result) set.status = 400;
+        return result;
       }
 
-      return await upsertSettings(db, config, installation.id, body);
+      const result = await upsertSettings(db, config, installation.id, body);
+      if ("error" in result) set.status = 400;
+      return result;
     },
     {
       body: t.Object({
@@ -128,6 +206,11 @@ async function upsertSettings(
   if (body.enabled !== undefined) updateData.enabled = body.enabled;
 
   if (body.apiKey && typeof body.apiKey === "string") {
+    const result = await validateApiKey(body.llmProvider as string ?? "openai", body.apiKey);
+    if (!result.valid) {
+      return { error: result.error ?? "Invalid API key" };
+    }
+    
     const encrypted = encrypt(body.apiKey, config.ENCRYPTION_KEY);
     updateData.apiKeyEncrypted = encrypted.ciphertext;
     updateData.apiKeyIv = encrypted.iv;

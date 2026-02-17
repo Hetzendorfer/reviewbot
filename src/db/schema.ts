@@ -80,3 +80,23 @@ export const reviews = pgTable("reviews", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const reviewJobs = pgTable("review_jobs", {
+  id: serial("id").primaryKey(),
+  installationId: integer("installation_id").notNull(),
+  repoFullName: text("repo_full_name").notNull(),
+  owner: text("owner").notNull(),
+  repo: text("repo").notNull(),
+  prNumber: integer("pr_number").notNull(),
+  prTitle: text("pr_title").notNull(),
+  commitSha: text("commit_sha").notNull(),
+  baseBranch: text("base_branch").notNull(),
+  status: reviewStatusEnum("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  errorMessage: text("error_message"),
+  checkRunId: integer("check_run_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+});
