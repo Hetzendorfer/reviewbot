@@ -8,29 +8,35 @@ import { loadConfig } from "../config.js";
 import { parseDiff, filterFiles, chunkDiffs } from "./differ.js";
 import { postReviewToGitHub } from "./poster.js";
 import { fetchRepoConfig, mergeConfig } from "../repo-config.js";
-import { AsyncQueue } from "../queue.js";
+import { PersistentQueue, type JobData } from "../queue.js";
 import type { ReviewResult } from "../llm/types.js";
 
-export interface ReviewJob {
-  installationId: number;
-  owner: string;
-  repo: string;
-  prNumber: number;
-  prTitle: string;
-  commitSha: string;
-  baseBranch: string;
-  repoFullName: string;
-}
+let reviewQueue: PersistentQueue | null = null;
 
-const reviewQueue = new AsyncQueue<ReviewJob>(processReview, 3);
-
-export function enqueueReview(job: ReviewJob): void {
-  reviewQueue.enqueue(job).catch((err) => {
-    console.error(`Review failed for ${job.repoFullName}#${job.prNumber}:`, err);
+export function startQueue(): void {
+  reviewQueue = new PersistentQueue(processReview, 3);
+  reviewQueue.recoverStaleJobs().then(() => {
+    reviewQueue!.start();
   });
 }
 
-async function processReview(job: ReviewJob): Promise<void> {
+export function stopQueue(): Promise<void> {
+  if (!reviewQueue) return Promise.resolve();
+  reviewQueue.stop();
+  return reviewQueue.waitForCompletion();
+}
+
+export function enqueueReview(job: JobData): void {
+  if (!reviewQueue) {
+    console.error("Queue not started");
+    return;
+  }
+  reviewQueue.enqueue(job).catch((err) => {
+    console.error(`Failed to enqueue review for ${job.repoFullName}#${job.prNumber}:`, err);
+  });
+}
+
+async function processReview(job: JobData): Promise<void> {
   const db = getDb();
   const config = loadConfig();
   const startTime = Date.now();

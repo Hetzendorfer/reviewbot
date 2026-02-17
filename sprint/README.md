@@ -10,7 +10,7 @@
 
 | # | Iteration | Priority | Time | Status |
 |---|-----------|----------|------|--------|
-| 01 | [Crash Recovery Foundation](./01-crash-recovery.md) | Critical | 3-4h | Pending |
+| 01 | [Crash Recovery Foundation](./01-crash-recovery.md) | Critical | 3-4h | **Completed** |
 | 02 | [Error Visibility & User Notification](./02-error-visibility.md) | High | 2-3h | Pending |
 | 03 | [Monitoring & Observability](./03-monitoring-observability.md) | High | 1-2h | Pending |
 | 04 | [Security & Operational Hardening](./04-security-hardening.md) | Medium | 1-2h | Pending |
