@@ -14,127 +14,131 @@ import { reviews } from "./db/schema.js";
 import { logger } from "./logger.js";
 
 async function runMigrations(): Promise<void> {
-  const config = loadConfig();
-  const client = postgres(config.DATABASE_URL, { max: 1 });
-  const db = drizzle(client);
+    const config = loadConfig();
+    const client = postgres(config.DATABASE_URL, { max: 1 });
+    const db = drizzle(client);
 
-  logger.info("Running database migrations...");
+    logger.info("Running database migrations...");
 
-  await migrate(db, { migrationsFolder: "./drizzle" });
+    await migrate(db, { migrationsFolder: "./drizzle" });
 
-  await client.end();
-  logger.info("Migrations complete");
+    await client.end();
+    logger.info("Migrations complete");
 }
 
 async function checkDatabaseConnection(): Promise<boolean> {
-  try {
-    const db = getDb();
-    await db.execute(sql`SELECT 1`);
-    return true;
-  } catch {
-    return false;
-  }
+    try {
+        const db = getDb();
+        await db.execute(sql`SELECT 1`);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 async function main() {
-  const config = loadConfig();
-  const FRONTEND_DIR = resolve(import.meta.dir, "../frontend/dist");
+    const config = loadConfig();
+    const FRONTEND_DIR = resolve(import.meta.dir, "../frontend/dist");
 
-  const app = new Elysia()
-    .use(cors())
-    .use(githubWebhookHandler)
-    .use(settingsRoutes)
-    .get("/health", async () => {
-      const dbOk = await checkDatabaseConnection();
-      const queueStats = await getQueueStats();
+    const app = new Elysia()
+        .use(cors())
+        .use(githubWebhookHandler)
+        .use(settingsRoutes)
+        .get("/health", async () => {
+            const dbOk = await checkDatabaseConnection();
+            const queueStats = await getQueueStats();
 
-      const status = dbOk ? "ok" : "degraded";
+            const status = dbOk ? "ok" : "degraded";
 
-      return {
-        status,
-        database: dbOk,
-        queue: queueStats,
-        uptime: Math.floor(process.uptime()),
-        timestamp: new Date().toISOString(),
-      };
-    })
-    .get("/metrics", async ({ set }) => {
-      try {
-        const db = getDb();
+            return {
+                status,
+                database: dbOk,
+                queue: queueStats,
+                uptime: Math.floor(process.uptime()),
+                timestamp: new Date().toISOString(),
+            };
+        })
+        .get("/metrics", async ({ set }) => {
+            try {
+                const db = getDb();
 
-        const totalReviews = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(reviews);
+                const totalReviews = await db
+                    .select({ count: sql<number>`count(*)` })
+                    .from(reviews);
 
-        const failedReviews = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(reviews)
-          .where(eq(reviews.status, "failed"));
+                const failedReviews = await db
+                    .select({ count: sql<number>`count(*)` })
+                    .from(reviews)
+                    .where(eq(reviews.status, "failed"));
 
-        const avgDuration = await db
-          .select({ avg: sql<number>`avg(duration_ms)` })
-          .from(reviews)
-          .where(sql`duration_ms IS NOT NULL`);
+                const avgDuration = await db
+                    .select({ avg: sql<number>`avg(duration_ms)` })
+                    .from(reviews)
+                    .where(sql`duration_ms IS NOT NULL`);
 
-        const queueStats = await getQueueStats();
+                const queueStats = await getQueueStats();
 
-        return {
-          reviews: {
-            total: totalReviews[0]?.count ?? 0,
-            failed: failedReviews[0]?.count ?? 0,
-            avgDurationMs: Math.round(avgDuration[0]?.avg ?? 0),
-          },
-          queue: queueStats,
-        };
-      } catch {
-        set.status = 503;
-        return { error: "Metrics unavailable" };
-      }
-    })
-    .get("/assets/*", ({ params }) => {
-      return new Response(Bun.file(resolve(FRONTEND_DIR, "assets", params["*"])));
-    })
-    .get("/", () => {
-      return new Response(Bun.file(resolve(FRONTEND_DIR, "index.html")), {
-        headers: { "Content-Type": "text/html" },
-      });
-    })
-    .listen({
-      port: config.PORT,
-      hostname: config.HOST,
-    });
+                return {
+                    reviews: {
+                        total: totalReviews[0]?.count ?? 0,
+                        failed: failedReviews[0]?.count ?? 0,
+                        avgDurationMs: Math.round(avgDuration[0]?.avg ?? 0),
+                    },
+                    queue: queueStats,
+                };
+            } catch {
+                set.status = 503;
+                return { error: "Metrics unavailable" };
+            }
+        })
+        .get("/assets/*", ({ params }) => {
+            const file = Bun.file(resolve(FRONTEND_DIR, "assets", params["*"]));
 
-  logger.info(`ReviewBot running at http://${config.HOST}:${config.PORT}`);
+            return new Response(file, {
+                headers: { "Content-Type": file.type },
+            });
+        })
+        .get("/", () => {
+            return new Response(Bun.file(resolve(FRONTEND_DIR, "index.html")), {
+                headers: { "Content-Type": "text/html" },
+            });
+        })
+        .listen({
+            port: config.PORT,
+            hostname: config.HOST,
+        });
 
-  startQueue();
+    logger.info(`ReviewBot running at http://${config.HOST}:${config.PORT}`);
 
-  let isShuttingDown = false;
+    startQueue();
 
-  async function shutdown(signal: string) {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
+    let isShuttingDown = false;
 
-    logger.info(`Received ${signal}, shutting down gracefully`);
+    async function shutdown(signal: string) {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
 
-    app.stop();
+        logger.info(`Received ${signal}, shutting down gracefully`);
 
-    await stopQueue();
+        app.stop();
 
-    logger.info("Shutdown complete");
-    process.exit(0);
-  }
+        await stopQueue();
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+        logger.info("Shutdown complete");
+        process.exit(0);
+    }
 
-  return app;
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+
+    return app;
 }
 
 runMigrations()
-  .then(() => main())
-  .catch((err) => {
-    logger.error("Failed to start", { error: String(err) });
-    process.exit(1);
-  });
+    .then(() => main())
+    .catch((err) => {
+        logger.error("Failed to start", { error: String(err) });
+        process.exit(1);
+    });
 
 export type App = Awaited<ReturnType<typeof main>>;
