@@ -14,7 +14,7 @@
 | 02 | [Error Visibility & User Notification](./02-error-visibility.md) | High | 2-3h | **Completed** |
 | 03 | [Monitoring & Observability](./03-monitoring-observability.md) | High | 1-2h | **Completed** |
 | 04 | [Security & Operational Hardening](./04-security-hardening.md) | Medium | 1-2h | **Completed** |
-| 05 | [Deployment Preparation](./05-deployment.md) | Low | 1h | Pending |
+| 05 | [Deployment Preparation](./05-deployment.md) | Low | 1h | **Completed** |
 
 ---
 
