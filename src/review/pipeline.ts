@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, sql, gte } from "drizzle-orm";
 import { getDb } from "../db/index.js";
 import { installations, installationSettings, reviews, reviewJobs } from "../db/schema.js";
 import { getOctokit, fetchPRDiff } from "../github/client.js";
@@ -40,11 +40,59 @@ export async function getQueueStats(): Promise<{ pending: number; processing: nu
   return reviewQueue.getQueueStats();
 }
 
-export function enqueueReview(job: JobData): void {
+export async function enqueueReview(job: JobData): Promise<void> {
   if (!reviewQueue) {
     logger.error("Queue not started");
     return;
   }
+
+  const db = getDb();
+
+  const existingJobs = await db
+    .select()
+    .from(reviewJobs)
+    .where(
+      and(
+        eq(reviewJobs.repoFullName, job.repoFullName),
+        eq(reviewJobs.prNumber, job.prNumber),
+        eq(reviewJobs.commitSha, job.commitSha),
+        sql`${reviewJobs.status} IN ('pending', 'processing')`
+      )
+    )
+    .limit(1);
+
+  if (existingJobs.length > 0) {
+    logger.info("Skipping duplicate review request", {
+      repo: job.repoFullName,
+      pr: job.prNumber,
+      existingJobId: existingJobs[0].id,
+    });
+    return;
+  }
+
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const recentComplete = await db
+    .select()
+    .from(reviewJobs)
+    .where(
+      and(
+        eq(reviewJobs.repoFullName, job.repoFullName),
+        eq(reviewJobs.prNumber, job.prNumber),
+        eq(reviewJobs.commitSha, job.commitSha),
+        eq(reviewJobs.status, "completed"),
+        gte(reviewJobs.completedAt, fiveMinutesAgo)
+      )
+    )
+    .limit(1);
+
+  if (recentComplete.length > 0) {
+    logger.info("Skipping recently completed review", {
+      repo: job.repoFullName,
+      pr: job.prNumber,
+    });
+    return;
+  }
+
   reviewQueue.enqueue(job).catch((err) => {
     logger.error("Failed to enqueue review", {
       repo: job.repoFullName,

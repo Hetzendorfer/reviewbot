@@ -5,6 +5,38 @@ import { installations, installationSettings } from "../db/schema.js";
 import { encrypt } from "../crypto.js";
 import { loadConfig } from "../config.js";
 
+const MAX_INSTRUCTIONS_LENGTH = 2000;
+const MAX_IGNORE_PATHS = 50;
+const MAX_PATH_LENGTH = 256;
+
+function validateSettings(body: Record<string, unknown>): string | null {
+  if (body.customInstructions && typeof body.customInstructions === "string") {
+    if (body.customInstructions.length > MAX_INSTRUCTIONS_LENGTH) {
+      return `Custom instructions too long (max ${MAX_INSTRUCTIONS_LENGTH} chars)`;
+    }
+  }
+
+  if (body.ignorePaths && Array.isArray(body.ignorePaths)) {
+    if (body.ignorePaths.length > MAX_IGNORE_PATHS) {
+      return `Too many ignore paths (max ${MAX_IGNORE_PATHS})`;
+    }
+    for (const path of body.ignorePaths) {
+      if (typeof path !== "string" || path.length > MAX_PATH_LENGTH) {
+        return "Invalid ignore path";
+      }
+    }
+  }
+
+  if (body.maxFilesPerReview !== undefined) {
+    const max = Number(body.maxFilesPerReview);
+    if (isNaN(max) || max < 1 || max > 100) {
+      return "maxFilesPerReview must be between 1 and 100";
+    }
+  }
+
+  return null;
+}
+
 async function validateApiKey(
   provider: string,
   apiKey: string
@@ -92,6 +124,12 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
   .put(
     "/:installationId",
     async ({ params, body, set }) => {
+      const validationError = validateSettings(body as Record<string, unknown>);
+      if (validationError) {
+        set.status = 400;
+        return { error: validationError };
+      }
+
       const db = getDb();
       const config = loadConfig();
       const githubInstallationId = parseInt(params.installationId);

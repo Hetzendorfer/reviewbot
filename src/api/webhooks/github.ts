@@ -6,18 +6,20 @@ import {
   type PullRequestEvent,
 } from "../../github/webhooks.js";
 import { enqueueReview } from "../../review/pipeline.js";
+import { logger } from "../../logger.js";
 
 export const githubWebhookHandler = new Elysia().post(
   "/webhooks/github",
-  async ({ request, body, set }) => {
+  async ({ body, set, request }) => {
     const config = loadConfig();
-    const rawBody = JSON.stringify(body);
+    const rawBody = body as string;
     const signature = request.headers.get("x-hub-signature-256");
     const event = request.headers.get("x-github-event");
 
     if (
       !verifyWebhookSignature(rawBody, signature, config.GITHUB_WEBHOOK_SECRET)
     ) {
+      logger.warn("Invalid webhook signature");
       set.status = 401;
       return { error: "Invalid signature" };
     }
@@ -27,15 +29,24 @@ export const githubWebhookHandler = new Elysia().post(
       return { error: "Missing event header" };
     }
 
-    const payload = body as unknown as PullRequestEvent;
+    let payload: PullRequestEvent;
+    try {
+      payload = JSON.parse(rawBody) as PullRequestEvent;
+    } catch {
+      set.status = 400;
+      return { error: "Invalid JSON payload" };
+    }
+
+    logger.info("Webhook received", {
+      event,
+      repo: payload.repository?.full_name,
+      action: payload.action,
+    });
 
     if (isPullRequestEvent(event, payload)) {
       const [owner, repo] = payload.repository.full_name.split("/");
-      console.log(
-        `PR #${payload.number} ${payload.action} on ${payload.repository.full_name}`
-      );
 
-      enqueueReview({
+      await enqueueReview({
         installationId: payload.installation.id,
         owner,
         repo,
@@ -46,9 +57,18 @@ export const githubWebhookHandler = new Elysia().post(
         repoFullName: payload.repository.full_name,
       });
 
+      logger.info("Review queued", {
+        installationId: payload.installation.id,
+        repo: payload.repository.full_name,
+        pr: payload.number,
+      });
+
       return { status: "queued" };
     }
 
     return { status: "ignored" };
+  },
+  {
+    parse: "text",
   }
 );

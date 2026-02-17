@@ -27,6 +27,7 @@ export interface PullRequestEvent {
     head: { sha: string };
     base: { ref: string };
     diff_url: string;
+    draft?: boolean;
   };
   repository: {
     full_name: string;
@@ -41,8 +42,14 @@ export function isPullRequestEvent(
   event: string,
   payload: PullRequestEvent
 ): boolean {
-  return (
-    event === "pull_request" &&
-    (payload.action === "opened" || payload.action === "synchronize")
-  );
+  if (event !== "pull_request") return false;
+
+  const validActions = [
+    "opened",
+    "synchronize",
+    "reopened",
+    "ready_for_review",
+  ];
+
+  return validActions.includes(payload.action);
 }
