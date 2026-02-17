@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "./db/index.js";
 import { reviewJobs } from "./db/schema.js";
+import { logger } from "./logger.js";
 
 export interface JobData {
   id?: number;
@@ -157,16 +158,29 @@ export class PersistentQueue {
           startedAt: null,
         })
         .where(eq(reviewJobs.id, job.id));
+
+      logger.error("Job processing failed", {
+        jobId: job.id,
+        repo: job.repoFullName,
+        pr: job.prNumber,
+        attempts,
+        error: errorMessage,
+      });
     }
   }
 
   async recoverStaleJobs(): Promise<void> {
     const db = getDb();
 
-    await db
+    const result = await db
       .update(reviewJobs)
       .set({ status: "pending", startedAt: null })
-      .where(eq(reviewJobs.status, "processing"));
+      .where(eq(reviewJobs.status, "processing"))
+      .returning();
+
+    if (result.length > 0) {
+      logger.info("Recovered stale jobs", { count: result.length });
+    }
   }
 
   async getQueueStats(): Promise<{ pending: number; processing: number; failed: number }> {

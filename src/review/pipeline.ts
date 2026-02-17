@@ -16,6 +16,7 @@ import {
   markCheckFailed,
 } from "../github/checks.js";
 import { withRetry, isRetryableError } from "../utils/retry.js";
+import { logger } from "../logger.js";
 import type { ReviewResult } from "../llm/types.js";
 
 let reviewQueue: PersistentQueue | null = null;
@@ -24,6 +25,7 @@ export function startQueue(): void {
   reviewQueue = new PersistentQueue(processReview, 3);
   reviewQueue.recoverStaleJobs().then(() => {
     reviewQueue!.start();
+    logger.info("Review queue started");
   });
 }
 
@@ -33,13 +35,22 @@ export function stopQueue(): Promise<void> {
   return reviewQueue.waitForCompletion();
 }
 
+export async function getQueueStats(): Promise<{ pending: number; processing: number; failed: number }> {
+  if (!reviewQueue) return { pending: 0, processing: 0, failed: 0 };
+  return reviewQueue.getQueueStats();
+}
+
 export function enqueueReview(job: JobData): void {
   if (!reviewQueue) {
-    console.error("Queue not started");
+    logger.error("Queue not started");
     return;
   }
   reviewQueue.enqueue(job).catch((err) => {
-    console.error(`Failed to enqueue review for ${job.repoFullName}#${job.prNumber}:`, err);
+    logger.error("Failed to enqueue review", {
+      repo: job.repoFullName,
+      pr: job.prNumber,
+      error: String(err),
+    });
   });
 }
 
@@ -47,6 +58,15 @@ async function processReview(job: JobData): Promise<void> {
   const db = getDb();
   const config = loadConfig();
   const startTime = Date.now();
+
+  const log = logger.withContext({
+    installationId: job.installationId,
+    repo: job.repoFullName,
+    pr: job.prNumber,
+    jobId: job.id,
+  });
+
+  log.info("Starting review");
 
   const octokit = await withRetry(
     () => getOctokit(job.installationId),
@@ -69,7 +89,7 @@ async function processReview(job: JobData): Promise<void> {
         .where(eq(reviewJobs.id, job.id));
     }
   } catch (err) {
-    console.error("Failed to create check run:", err);
+    log.error("Failed to create check run", { error: String(err) });
   }
 
   const [installation] = await db
@@ -79,12 +99,12 @@ async function processReview(job: JobData): Promise<void> {
     .limit(1);
 
   if (!installation) {
-    console.warn(`Unknown installation: ${job.installationId}`);
+    log.warn("Installation not found");
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Installation not found");
       } catch (err) {
-        console.error("Failed to update check run:", err);
+        log.error("Failed to update check run", { error: String(err) });
       }
     }
     return;
@@ -97,24 +117,24 @@ async function processReview(job: JobData): Promise<void> {
     .limit(1);
 
   if (!settings || !settings.enabled) {
-    console.log(`Reviews disabled for installation ${job.installationId}`);
+    log.info("Reviews disabled for installation");
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Reviews disabled for this installation");
       } catch (err) {
-        console.error("Failed to update check run:", err);
+        log.error("Failed to update check run", { error: String(err) });
       }
     }
     return;
   }
 
   if (!settings.apiKeyEncrypted || !settings.apiKeyIv || !settings.apiKeyAuthTag) {
-    console.warn(`No API key configured for installation ${job.installationId}`);
+    log.warn("No API key configured");
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "No API key configured");
       } catch (err) {
-        console.error("Failed to update check run:", err);
+        log.error("Failed to update check run", { error: String(err) });
       }
     }
     return;
@@ -124,7 +144,7 @@ async function processReview(job: JobData): Promise<void> {
     try {
       await markCheckInProgress(octokit, job.owner, job.repo, checkRunId);
     } catch (err) {
-      console.error("Failed to update check run:", err);
+      log.error("Failed to update check run", { error: String(err) });
     }
   }
 
@@ -261,12 +281,15 @@ async function processReview(job: JobData): Promise<void> {
       );
     }
 
-    console.log(
-      `Review completed for ${job.repoFullName}#${job.prNumber} in ${durationMs}ms`
-    );
+    log.info("Review completed", {
+      durationMs,
+      commentCount: combinedResult.comments.length,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+    });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`Review error for ${job.repoFullName}#${job.prNumber}:`, errorMessage);
+    log.error("Review failed", { error: errorMessage });
 
     await db
       .update(reviews)

@@ -8,6 +8,7 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().length(64, "Must be 32 bytes hex-encoded"),
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default("0.0.0.0"),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
 export type Config = z.infer<typeof envSchema>;
