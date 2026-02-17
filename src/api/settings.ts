@@ -5,6 +5,42 @@ import { installations, installationSettings } from "../db/schema.js";
 import { encrypt } from "../crypto.js";
 import { loadConfig } from "../config.js";
 
+async function validateApiKey(
+  provider: string,
+  apiKey: string
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    switch (provider) {
+      case "openai": {
+        const { OpenAI } = await import("openai");
+        const client = new OpenAI({ apiKey });
+        await client.models.list();
+        return { valid: true };
+      }
+      case "anthropic": {
+        if (!apiKey.startsWith("sk-ant-")) {
+          return { valid: false, error: "Anthropic keys must start with 'sk-ant-'" };
+        }
+        if (apiKey.length < 50) {
+          return { valid: false, error: "Anthropic key appears too short" };
+        }
+        return { valid: true };
+      }
+      case "gemini": {
+        if (!/^[A-Za-z0-9_-]{30,}$/.test(apiKey)) {
+          return { valid: false, error: "Invalid Gemini key format" };
+        }
+        return { valid: true };
+      }
+      default:
+        return { valid: false, error: "Unknown provider" };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { valid: false, error: `API key validation failed: ${message}` };
+  }
+}
+
 export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
   .get("/:installationId", async ({ params, set }) => {
     const db = getDb();
@@ -77,10 +113,14 @@ export const settingsRoutes = new Elysia({ prefix: "/api/settings" })
           })
           .returning();
 
-        return await upsertSettings(db, config, newInstall.id, body);
+        const result = await upsertSettings(db, config, newInstall.id, body);
+        if ("error" in result) set.status = 400;
+        return result;
       }
 
-      return await upsertSettings(db, config, installation.id, body);
+      const result = await upsertSettings(db, config, installation.id, body);
+      if ("error" in result) set.status = 400;
+      return result;
     },
     {
       body: t.Object({
@@ -128,6 +168,11 @@ async function upsertSettings(
   if (body.enabled !== undefined) updateData.enabled = body.enabled;
 
   if (body.apiKey && typeof body.apiKey === "string") {
+    const result = await validateApiKey(body.llmProvider as string ?? "openai", body.apiKey);
+    if (!result.valid) {
+      return { error: result.error ?? "Invalid API key" };
+    }
+    
     const encrypted = encrypt(body.apiKey, config.ENCRYPTION_KEY);
     updateData.apiKeyEncrypted = encrypted.ciphertext;
     updateData.apiKeyIv = encrypted.iv;

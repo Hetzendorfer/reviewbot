@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/index.js";
-import { installations, installationSettings, reviews } from "../db/schema.js";
+import { installations, installationSettings, reviews, reviewJobs } from "../db/schema.js";
 import { getOctokit, fetchPRDiff } from "../github/client.js";
 import { getProvider } from "../llm/registry.js";
 import { decrypt } from "../crypto.js";
@@ -9,6 +9,13 @@ import { parseDiff, filterFiles, chunkDiffs } from "./differ.js";
 import { postReviewToGitHub } from "./poster.js";
 import { fetchRepoConfig, mergeConfig } from "../repo-config.js";
 import { PersistentQueue, type JobData } from "../queue.js";
+import {
+  createCheckRun,
+  markCheckInProgress,
+  markCheckSuccess,
+  markCheckFailed,
+} from "../github/checks.js";
+import { withRetry, isRetryableError } from "../utils/retry.js";
 import type { ReviewResult } from "../llm/types.js";
 
 let reviewQueue: PersistentQueue | null = null;
@@ -41,7 +48,30 @@ async function processReview(job: JobData): Promise<void> {
   const config = loadConfig();
   const startTime = Date.now();
 
-  // Find installation
+  const octokit = await withRetry(
+    () => getOctokit(job.installationId),
+    { maxAttempts: 3, shouldRetry: isRetryableError }
+  );
+
+  let checkRunId: number | null = null;
+  try {
+    checkRunId = await createCheckRun(octokit, {
+      owner: job.owner,
+      repo: job.repo,
+      headSha: job.commitSha,
+      prNumber: job.prNumber,
+    });
+
+    if (job.id) {
+      await db
+        .update(reviewJobs)
+        .set({ checkRunId })
+        .where(eq(reviewJobs.id, job.id));
+    }
+  } catch (err) {
+    console.error("Failed to create check run:", err);
+  }
+
   const [installation] = await db
     .select()
     .from(installations)
@@ -50,10 +80,16 @@ async function processReview(job: JobData): Promise<void> {
 
   if (!installation) {
     console.warn(`Unknown installation: ${job.installationId}`);
+    if (checkRunId) {
+      try {
+        await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Installation not found");
+      } catch (err) {
+        console.error("Failed to update check run:", err);
+      }
+    }
     return;
   }
 
-  // Get settings
   const [settings] = await db
     .select()
     .from(installationSettings)
@@ -62,15 +98,36 @@ async function processReview(job: JobData): Promise<void> {
 
   if (!settings || !settings.enabled) {
     console.log(`Reviews disabled for installation ${job.installationId}`);
+    if (checkRunId) {
+      try {
+        await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Reviews disabled for this installation");
+      } catch (err) {
+        console.error("Failed to update check run:", err);
+      }
+    }
     return;
   }
 
   if (!settings.apiKeyEncrypted || !settings.apiKeyIv || !settings.apiKeyAuthTag) {
     console.warn(`No API key configured for installation ${job.installationId}`);
+    if (checkRunId) {
+      try {
+        await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "No API key configured");
+      } catch (err) {
+        console.error("Failed to update check run:", err);
+      }
+    }
     return;
   }
 
-  // Create review record
+  if (checkRunId) {
+    try {
+      await markCheckInProgress(octokit, job.owner, job.repo, checkRunId);
+    } catch (err) {
+      console.error("Failed to update check run:", err);
+    }
+  }
+
   const [review] = await db
     .insert(reviews)
     .values({
@@ -86,9 +143,6 @@ async function processReview(job: JobData): Promise<void> {
     .returning();
 
   try {
-    const octokit = await getOctokit(job.installationId);
-
-    // Fetch and merge repo config
     const repoConfig = await fetchRepoConfig(
       octokit,
       job.owner,
@@ -102,10 +156,12 @@ async function processReview(job: JobData): Promise<void> {
         .update(reviews)
         .set({ status: "completed", summaryComment: "Skipped (disabled via repo config)" })
         .where(eq(reviews.id, review.id));
+      if (checkRunId) {
+        await markCheckSuccess(octokit, job.owner, job.repo, checkRunId, "Skipped (disabled via repo config)", 0);
+      }
       return;
     }
 
-    // Fetch diff
     const rawDiff = await fetchPRDiff(octokit, job.owner, job.repo, job.prNumber);
     const files = parseDiff(rawDiff);
     const filtered = filterFiles(
@@ -119,10 +175,12 @@ async function processReview(job: JobData): Promise<void> {
         .update(reviews)
         .set({ status: "completed", summaryComment: "No reviewable files." })
         .where(eq(reviews.id, review.id));
+      if (checkRunId) {
+        await markCheckSuccess(octokit, job.owner, job.repo, checkRunId, "No reviewable files.", 0);
+      }
       return;
     }
 
-    // Decrypt API key
     const apiKey = decrypt(
       {
         ciphertext: settings.apiKeyEncrypted,
@@ -132,7 +190,6 @@ async function processReview(job: JobData): Promise<void> {
       config.ENCRYPTION_KEY
     );
 
-    // Call LLM
     const provider = getProvider(settings.llmProvider);
     const chunks = chunkDiffs(filtered);
 
@@ -141,14 +198,21 @@ async function processReview(job: JobData): Promise<void> {
     let totalCompletionTokens = 0;
 
     for (const chunk of chunks) {
-      const result = await provider.review(
+      const result = await withRetry(
+        () =>
+          provider.review(
+            {
+              diff: chunk,
+              prTitle: job.prTitle,
+              customInstructions: mergedConfig.customInstructions,
+            },
+            apiKey,
+            settings.llmModel
+          ),
         {
-          diff: chunk,
-          prTitle: job.prTitle,
-          customInstructions: mergedConfig.customInstructions,
-        },
-        apiKey,
-        settings.llmModel
+          maxAttempts: 3,
+          shouldRetry: isRetryableError,
+        }
       );
       combinedResult.comments.push(...result.comments);
       if (result.summary) {
@@ -160,7 +224,6 @@ async function processReview(job: JobData): Promise<void> {
       }
     }
 
-    // Post review
     await postReviewToGitHub(
       octokit,
       job.owner,
@@ -187,6 +250,17 @@ async function processReview(job: JobData): Promise<void> {
       })
       .where(eq(reviews.id, review.id));
 
+    if (checkRunId) {
+      await markCheckSuccess(
+        octokit,
+        job.owner,
+        job.repo,
+        checkRunId,
+        combinedResult.summary || "Review completed.",
+        combinedResult.comments.length
+      );
+    }
+
     console.log(
       `Review completed for ${job.repoFullName}#${job.prNumber} in ${durationMs}ms`
     );
@@ -203,5 +277,9 @@ async function processReview(job: JobData): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(reviews.id, review.id));
+
+    if (checkRunId) {
+      await markCheckFailed(octokit, job.owner, job.repo, checkRunId, errorMessage);
+    }
   }
 }
