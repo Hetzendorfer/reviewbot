@@ -8,6 +8,20 @@
       "when": 1700000000000,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771435294568,
+      "tag": "0001_unique_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771435294569,
+      "tag": "0002_bigint_check_run_id",
+      "breakpoints": true
     }
   ]
 }

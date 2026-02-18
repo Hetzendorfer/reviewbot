@@ -7,7 +7,8 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { loadConfig } from "./config.js";
 import { githubWebhookHandler } from "./api/webhooks/github.js";
-import { settingsRoutes } from "./api/settings.js";
+import { authRoutes } from "./api/auth.js";
+import { installationsRoutes } from "./api/installations.js";
 import { startQueue, stopQueue, getQueueStats } from "./review/pipeline.js";
 import { getDb } from "./db/index.js";
 import { reviews } from "./db/schema.js";
@@ -43,7 +44,8 @@ async function main() {
     const app = new Elysia()
         .use(cors())
         .use(githubWebhookHandler)
-        .use(settingsRoutes)
+        .use(authRoutes)
+        .use(installationsRoutes)
         .get("/health", async () => {
             const dbOk = await checkDatabaseConnection();
             const queueStats = await getQueueStats();

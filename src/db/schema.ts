@@ -2,6 +2,7 @@ import {
   pgTable,
   serial,
   integer,
+  bigint,
   text,
   boolean,
   timestamp,
@@ -83,6 +84,7 @@ export const reviews = pgTable("reviews", {
 
 export const reviewJobs = pgTable("review_jobs", {
   id: serial("id").primaryKey(),
+  // Stores the GitHub installation ID (not the internal installations.id PK)
   installationId: integer("installation_id").notNull(),
   repoFullName: text("repo_full_name").notNull(),
   owner: text("owner").notNull(),
@@ -95,8 +97,21 @@ export const reviewJobs = pgTable("review_jobs", {
   attempts: integer("attempts").default(0).notNull(),
   maxAttempts: integer("max_attempts").default(3).notNull(),
   errorMessage: text("error_message"),
-  checkRunId: integer("check_run_id"),
+  // bigint: GitHub check run IDs are 64-bit and can exceed int4's max of ~2.1B
+  checkRunId: bigint("check_run_id", { mode: "number" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+});
+
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  githubUserId: integer("github_user_id").notNull(),
+  githubUsername: text("github_username").notNull(),
+  githubAvatar: text("github_avatar"),
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  accessTokenIv: text("access_token_iv").notNull(),
+  accessTokenAuthTag: text("access_token_auth_tag").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
