@@ -55,7 +55,7 @@ Hinweis: shadcn fügt benötigte `@radix-ui/*` Pakete später automatisch hinzu.
 ### 1.3 Vite auf React + Alias umstellen
 Datei: `frontend/vite.config.ts`
 ```ts
-import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -63,7 +63,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
   build: {
@@ -142,10 +142,9 @@ Minimal:
 ```
 
 ### 1.7 Tailwind Basis anlegen
-Datei: `frontend/tailwind.config.ts`
-```ts
-import type { Config } from 'tailwindcss'
-
+Datei: `frontend/tailwind.config.js`
+```js
+/** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -155,10 +154,10 @@ export default {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))'
       }
-    }
+  }
   },
   plugins: []
-} satisfies Config
+}
 ```
 
 Datei: `frontend/src/index.css`
@@ -190,7 +189,7 @@ Empfohlene Antworten:
 - Style: `Default`
 - Base color: `Slate`
 - CSS Variables: `Yes`
-- Tailwind config: `tailwind.config.ts`
+- Tailwind config: `tailwind.config.js`
 - Tailwind CSS file: `src/index.css`
 - Components: `src/components`
 - Utilities: `src/lib/utils.ts`
@@ -289,7 +288,7 @@ Akzeptanzkriterium: API-Requests und State-Flows bleiben identisch zum Preact-St
 cd frontend
 bun run typecheck
 bun run build
-bun run dev
+bun run dev # in separater Shell starten, Prozess läuft dauerhaft
 ```
 
 Zusätzlich in separater Shell vom Repo-Root:
@@ -325,7 +324,7 @@ bun run --filter reviewbot-frontend typecheck
 - `frontend/src/components/DashboardView.tsx`
 - `frontend/src/components/SettingsView.tsx`
 - `frontend/src/components/InstallationCard.tsx`
-- `frontend/tailwind.config.ts`
+- `frontend/tailwind.config.js`
 - `frontend/postcss.config.js`
 
 ### Geändert
