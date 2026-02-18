@@ -43,6 +43,8 @@ async function main() {
         ? resolve(process.cwd(), "frontend/dist")
         : resolve(import.meta.dir, "../frontend/dist");
 
+    logger.info(`Frontend directory: ${FRONTEND_DIR}`);
+
     const app = new Elysia()
         .use(cors())
         .use(githubWebhookHandler)
@@ -103,9 +105,21 @@ async function main() {
             });
         })
         .get("/", () => {
-            return new Response(Bun.file(resolve(FRONTEND_DIR, "index.html")), {
+            const indexPath = resolve(FRONTEND_DIR, "index.html");
+            return new Response(Bun.file(indexPath), {
                 headers: { "Content-Type": "text/html" },
             });
+        })
+        .onError(({ code, error, set }) => {
+            if (code === "NOT_FOUND") {
+                const indexPath = resolve(FRONTEND_DIR, "index.html");
+                return new Response(Bun.file(indexPath), {
+                    headers: { "Content-Type": "text/html" },
+                });
+            }
+            logger.error("Server error", { code, error: String(error) });
+            set.status = 500;
+            return { error: "Internal server error" };
         })
         .listen({
             port: config.PORT,
