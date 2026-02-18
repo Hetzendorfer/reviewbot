@@ -39,7 +39,9 @@ async function checkDatabaseConnection(): Promise<boolean> {
 
 async function main() {
     const config = loadConfig();
-    const FRONTEND_DIR = resolve(import.meta.dir, "../frontend/dist");
+    const FRONTEND_DIR = process.env.NODE_ENV === "production"
+        ? resolve(process.cwd(), "frontend/dist")
+        : resolve(import.meta.dir, "../frontend/dist");
 
     const app = new Elysia()
         .use(cors())
