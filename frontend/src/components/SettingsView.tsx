@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -104,27 +104,30 @@ export default function SettingsView({
   }
 
   return (
-    <main className='mx-auto max-w-3xl px-4 py-8'>
-      <Card className='border-border/60'>
-        <CardHeader className='space-y-4'>
-          <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='ghost' onClick={onBack}>
-              Back
-            </Button>
-            <CardTitle>Settings</CardTitle>
-            {installation && (
-              <div className='ml-auto flex items-center gap-2 rounded-md border px-2 py-1 text-sm text-muted-foreground'>
-                <Avatar className='h-5 w-5'>
-                  <AvatarImage src={installation.avatar} alt={installation.account} />
-                  <AvatarFallback>{getFallbackLabel(installation.account)}</AvatarFallback>
-                </Avatar>
-                {installation.account}
-              </div>
-            )}
+    <main className='mx-auto max-w-3xl space-y-6 px-4 py-8'>
+      <header className='flex flex-wrap items-center gap-3'>
+        <Button variant='ghost' onClick={onBack}>
+          Back
+        </Button>
+        <h1 className='text-2xl font-semibold'>Settings</h1>
+        {installation && (
+          <div className='ml-auto flex items-center gap-2 rounded-md border px-2 py-1 text-sm text-muted-foreground'>
+            <Avatar className='h-5 w-5'>
+              <AvatarImage src={installation.avatar} alt={installation.account} />
+              <AvatarFallback>{getFallbackLabel(installation.account)}</AvatarFallback>
+            </Avatar>
+            {installation.account}
           </div>
-        </CardHeader>
+        )}
+      </header>
 
-        <CardContent className='space-y-6'>
+      {/* General */}
+      <Card className='border-border/60'>
+        <CardHeader>
+          <CardTitle>General</CardTitle>
+          <CardDescription>Enable or disable reviews for this installation.</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className='flex items-center space-x-2'>
             <Checkbox
               id='enabled'
@@ -135,11 +138,20 @@ export default function SettingsView({
               Enable reviews
             </label>
           </div>
+        </CardContent>
+      </Card>
 
+      {/* LLM Configuration */}
+      <Card className='border-border/60'>
+        <CardHeader>
+          <CardTitle>LLM Configuration</CardTitle>
+          <CardDescription>Choose your AI provider, model, and API key.</CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
           <div className='grid gap-4 sm:grid-cols-2'>
             <div className='space-y-2'>
               <label htmlFor='provider' className='text-sm font-medium'>
-                LLM Provider
+                Provider
               </label>
               <Select
                 value={provider}
@@ -191,7 +203,16 @@ export default function SettingsView({
               placeholder={hasApiKey ? '********' : 'Enter your API key'}
             />
           </div>
+        </CardContent>
+      </Card>
 
+      {/* Review Configuration */}
+      <Card className='border-border/60'>
+        <CardHeader>
+          <CardTitle>Review Configuration</CardTitle>
+          <CardDescription>Configure how reviews are performed.</CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
           <div className='space-y-2'>
             <label htmlFor='reviewStyle' className='text-sm font-medium'>
               Review Style
@@ -212,17 +233,6 @@ export default function SettingsView({
           </div>
 
           <div className='space-y-2'>
-            <label htmlFor='ignorePaths' className='text-sm font-medium'>
-              Ignore Paths (comma-separated globs)
-            </label>
-            <Input
-              id='ignorePaths'
-              value={ignorePaths}
-              onChange={(event) => setIgnorePaths(event.target.value)}
-            />
-          </div>
-
-          <div className='space-y-2'>
             <label htmlFor='maxFiles' className='text-sm font-medium'>
               Max Files Per Review
             </label>
@@ -240,28 +250,68 @@ export default function SettingsView({
           </div>
 
           <div className='space-y-2'>
+            <label htmlFor='ignorePaths' className='text-sm font-medium'>
+              Ignore Paths (comma-separated globs)
+            </label>
+            <Input
+              id='ignorePaths'
+              value={ignorePaths}
+              onChange={(event) => setIgnorePaths(event.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Custom Instructions */}
+      <Card className='border-border/60'>
+        <CardHeader>
+          <CardTitle>Custom Instructions</CardTitle>
+          <CardDescription>Provide additional guidance to the reviewer.</CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <div className='space-y-2'>
+            <label htmlFor='profile' className='text-sm font-medium text-muted-foreground'>
+              Profile
+            </label>
+            <Select disabled>
+              <SelectTrigger id='profile'>
+                <SelectValue placeholder='Coming soon' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='_'>Default</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className='space-y-2'>
             <label htmlFor='instructions' className='text-sm font-medium'>
-              Custom Instructions
+              Instructions
             </label>
             <Textarea
               id='instructions'
               value={customInstructions}
               onChange={(event) => setCustomInstructions(event.target.value)}
               placeholder='Additional instructions for the reviewer...'
+              rows={4}
             />
           </div>
-
-          <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Settings'}
-          </Button>
-
-          {status && (
-            <Alert variant={status.type === 'error' ? 'destructive' : 'default'}>
-              <AlertDescription>{status.message}</AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
+
+      <div className='flex items-center gap-4'>
+        <Button onClick={save} disabled={saving}>
+          {saving ? 'Saving...' : 'Save Settings'}
+        </Button>
+
+        {status && (
+          <Alert
+            variant={status.type === 'error' ? 'destructive' : 'default'}
+            className='flex-1'
+          >
+            <AlertDescription>{status.message}</AlertDescription>
+          </Alert>
+        )}
+      </div>
     </main>
   )
 }

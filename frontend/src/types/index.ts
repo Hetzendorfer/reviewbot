@@ -24,5 +24,3 @@ export interface Settings {
   maxFilesPerReview: number
   enabled: boolean
 }
-
-export type View = 'loading' | 'login' | 'dashboard' | 'settings'
