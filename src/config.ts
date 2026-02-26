@@ -7,6 +7,7 @@ const envSchema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().min(1),
   GITHUB_CLIENT_ID: z.string().min(1),
   GITHUB_CLIENT_SECRET: z.string().min(1),
+  METRICS_TOKEN: z.string().min(1).optional(),
   DATABASE_URL: z.string().url(),
   ENCRYPTION_KEY: z.string().length(64, "Must be 32 bytes hex-encoded"),
   SESSION_SECRET: z.string().min(32),

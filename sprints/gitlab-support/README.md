@@ -3,6 +3,11 @@
 ## Goal
 Add GitLab as a supported platform alongside GitHub, allowing ReviewBot to review Merge Requests on GitLab repositories with the same LLM-powered review capabilities.
 
+## Status
+- `Unvollständig`
+- `Verschoben`: GitLab support wird in einem späteren Sprint umgesetzt
+- Dieser Plan bleibt als Entwurf bestehen und ist aktuell nicht in aktiver Umsetzung
+
 ## Background
 The codebase is currently tightly coupled to GitHub across auth, webhooks, the review pipeline, the poster, the DB schema, and the frontend. However, the LLM layer, diff parser, queue, and review logic are already platform-agnostic. The strategy is to:
 1. Define platform abstraction interfaces
