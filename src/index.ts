@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { timingSafeEqual } from "crypto";
 import { resolve } from "path";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -37,6 +38,27 @@ async function checkDatabaseConnection(): Promise<boolean> {
     }
 }
 
+function extractBearerToken(authHeader: string | null): string | null {
+    if (!authHeader) return null;
+    const [scheme, token, ...rest] = authHeader.split(" ");
+    if (scheme !== "Bearer" || !token || rest.length > 0) return null;
+    return token;
+}
+
+function verifyMetricsToken(
+    authHeader: string | null,
+    expectedToken: string,
+): boolean {
+    const providedToken = extractBearerToken(authHeader);
+    if (!providedToken) return false;
+
+    const provided = Buffer.from(providedToken, "utf-8");
+    const expected = Buffer.from(expectedToken, "utf-8");
+    if (provided.length !== expected.length) return false;
+
+    return timingSafeEqual(provided, expected);
+}
+
 async function main() {
     const config = loadConfig();
     const FRONTEND_DIR = process.env.NODE_ENV === "production"
@@ -44,6 +66,9 @@ async function main() {
         : resolve(import.meta.dir, "../frontend/dist");
 
     logger.info(`Frontend directory: ${FRONTEND_DIR}`);
+    if (!config.METRICS_TOKEN) {
+        logger.warn("METRICS_TOKEN not set: /metrics endpoint disabled");
+    }
 
     const app = new Elysia()
         .use(cors())
@@ -64,7 +89,22 @@ async function main() {
                 timestamp: new Date().toISOString(),
             };
         })
-        .get("/metrics", async ({ set }) => {
+        .get("/metrics", async ({ set, request }) => {
+            if (!config.METRICS_TOKEN) {
+                set.status = process.env.NODE_ENV === "production" ? 404 : 503;
+                return { error: "Metrics unavailable" };
+            }
+
+            if (
+                !verifyMetricsToken(
+                    request.headers.get("authorization"),
+                    config.METRICS_TOKEN,
+                )
+            ) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
             try {
                 const db = getDb();
 

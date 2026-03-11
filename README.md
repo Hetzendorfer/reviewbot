@@ -13,14 +13,14 @@ GitHub App that performs automated PR reviews using LLMs.
 - **Review Pipeline**: Diff parsing/chunking → LLM call → structured comment parsing → GitHub review posting (src/review/)
 - **Persistent Queue**: PostgreSQL-backed job queue with crash recovery (src/queue.ts)
 - **Settings API**: GET/PUT /api/settings/:installationId with encrypted key storage (src/api/settings.ts)
-- **Frontend**: Preact settings page with provider/model selection, API key input, review style config (frontend/)
+- **Frontend**: React dashboard and settings UI built with Vite and TanStack Router (frontend/)
 - **Docker**: Multi-stage Dockerfile + Compose with PostgreSQL
 
 ## Quick Start
 
 1. Copy `.env.example` to `.env` and fill in GitHub App credentials + encryption key
 2. `docker compose up` to start the app + database
-3. Install the GitHub App on a repo, configure settings at `http://localhost:3000?installation_id=<ID>`
+3. Start the app, sign in at `http://localhost:3000`, then configure an installation from the dashboard
 
 ## Creating a GitHub App
 
@@ -114,7 +114,7 @@ bun run dev:frontend
 bun test
 
 # Type check
-bunx tsc --noEmit
+bun run typecheck
 
 # Generate migration
 bun run db:generate
