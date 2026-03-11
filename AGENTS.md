@@ -7,7 +7,7 @@ Coding agent instructions for working in the ReviewBot codebase.
 ReviewBot is a GitHub App that performs automated PR reviews using LLMs. It's built with:
 - **Backend**: Bun + TypeScript + Elysia web framework
 - **Database**: PostgreSQL with Drizzle ORM
-- **Frontend**: Preact + Vite (in `frontend/` directory)
+- **Frontend**: React + Vite (in `frontend/` directory)
 - **LLM Providers**: OpenAI, Anthropic, Google Gemini (pluggable interface)
 
 ## Build/Lint/Test Commands
@@ -31,7 +31,7 @@ bun test tests/parser.test.ts    # Run single test file
 bun test --watch             # Run tests in watch mode
 
 # Type checking (run before committing)
-bunx tsc --noEmit            # Type check all TypeScript files
+bun run typecheck            # Type check backend and frontend TypeScript files
 ```
 
 ## Code Style Guidelines
@@ -239,7 +239,7 @@ src/
 └── repo-config.ts           # .reviewbot.yml loading
 
 tests/                       # Test files (mirror src structure)
-frontend/                    # Preact frontend
+frontend/                    # React frontend
 ```
 
 ## Key Patterns

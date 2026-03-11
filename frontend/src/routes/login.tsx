@@ -16,7 +16,7 @@ export const loginRoute = createRoute({
 })
 
 function LoginPage() {
-  const { loading, login } = loginRoute.useRouteContext()
+  const { loading, user, login } = loginRoute.useRouteContext()
 
   if (loading) {
     return (
@@ -32,6 +32,10 @@ function LoginPage() {
         </Card>
       </main>
     )
+  }
+
+  if (user) {
+    return null
   }
 
   return <LoginView onLogin={login} />

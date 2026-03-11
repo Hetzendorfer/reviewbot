@@ -36,7 +36,7 @@ function LoadingView() {
 }
 
 function DashboardPage() {
-  const { user, logout } = indexRoute.useRouteContext()
+  const { loading, user, logout } = indexRoute.useRouteContext()
   const navigate = useNavigate()
   const [installations, setInstallations] = useState<Installation[]>([])
   const [installUrl, setInstallUrl] = useState('')
@@ -66,8 +66,13 @@ function DashboardPage() {
   }, [])
 
   useEffect(() => {
+    if (loading || !user) {
+      return
+    }
+
+    setLoaded(false)
     void fetchData()
-  }, [fetchData])
+  }, [fetchData, loading, user])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -84,8 +89,12 @@ function DashboardPage() {
     [navigate]
   )
 
-  if (!loaded || !user) {
+  if (loading || !loaded) {
     return <LoadingView />
+  }
+
+  if (!user) {
+    return null
   }
 
   return (

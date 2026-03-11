@@ -37,6 +37,7 @@ function LoadingView() {
 
 function SettingsPage() {
   const { installationId } = settingsRoute.useParams()
+  const { loading, user } = settingsRoute.useRouteContext()
   const navigate = useNavigate()
   const installationIdNum = Number.parseInt(installationId, 10)
   const isValidId = Number.isFinite(installationIdNum) && installationIdNum > 0
@@ -46,7 +47,18 @@ function SettingsPage() {
   const [error, setError] = useState(!isValidId)
 
   useEffect(() => {
-    if (!isValidId) return
+    if (loading || !user) {
+      return
+    }
+
+    if (!isValidId) {
+      setError(true)
+      return
+    }
+
+    setError(false)
+    setSettings(null)
+    setInstallation(null)
 
     const fetchData = async () => {
       try {
@@ -75,11 +87,19 @@ function SettingsPage() {
     }
 
     void fetchData()
-  }, [installationIdNum, isValidId])
+  }, [installationIdNum, isValidId, loading, user])
 
   const handleBack = useCallback(() => {
     void navigate({ to: '/' })
   }, [navigate])
+
+  if (loading) {
+    return <LoadingView />
+  }
+
+  if (!user) {
+    return null
+  }
 
   if (error) {
     return (

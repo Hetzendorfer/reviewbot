@@ -30,6 +30,10 @@ function App() {
     document.documentElement.classList.add('dark')
   }, [])
 
+  React.useEffect(() => {
+    void router.invalidate()
+  }, [auth.loading, auth.user])
+
   return (
     <RouterProvider
       router={router}
