@@ -5,35 +5,12 @@ import { getDb } from "../db/index.js"
 import { installations, installationSettings, sessions } from "../db/schema.js"
 import { loadConfig } from "../config.js"
 import { validateSession } from "./auth.js"
-import { encrypt, decrypt } from "../crypto.js"
+import { encrypt } from "../crypto.js"
+import {
+  getAccessToken,
+  userHasInstallationAccess,
+} from "./github-installations.js"
 import { logger } from "../logger.js"
-
-function getAccessToken(session: typeof sessions.$inferSelect): string {
-  const config = loadConfig()
-  return decrypt({
-    ciphertext: session.accessTokenEncrypted,
-    iv: session.accessTokenIv,
-    authTag: session.accessTokenAuthTag,
-  }, config.ENCRYPTION_KEY)
-}
-
-async function userHasInstallationAccess(
-  session: typeof sessions.$inferSelect,
-  installationId: number
-): Promise<boolean> {
-  try {
-    const octokit = new Octokit({ auth: getAccessToken(session) })
-    // GitHub returns 404/403 if the user does not have access to this installation,
-    // so this implicitly verifies ownership without needing to paginate all installations.
-    await octokit.request("GET /user/installations/{installation_id}/repositories", {
-      installation_id: installationId,
-      per_page: 1,
-    })
-    return true
-  } catch {
-    return false
-  }
-}
 
 const DEFAULT_SETTINGS = {
   llmProvider: "openai",

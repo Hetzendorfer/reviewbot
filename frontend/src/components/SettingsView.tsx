@@ -7,6 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import ReviewHistory from '@/components/ReviewHistory'
+import UsageDashboard from '@/components/UsageDashboard'
 import type { Installation, LlmProvider, Settings } from '@/types'
 
 const MODELS: Record<LlmProvider, string[]> = {
@@ -104,7 +106,7 @@ export default function SettingsView({
   }
 
   return (
-    <main className='mx-auto max-w-3xl space-y-6 px-4 py-8'>
+    <main className='mx-auto max-w-6xl space-y-8 px-4 py-8'>
       <header className='flex flex-wrap items-center gap-3'>
         <Button variant='ghost' onClick={onBack}>
           Back
@@ -312,6 +314,18 @@ export default function SettingsView({
           </Alert>
         )}
       </div>
+
+      <section className='space-y-4'>
+        <div>
+          <h2 className='text-2xl font-semibold'>Usage</h2>
+          <p className='text-sm text-muted-foreground'>
+            Monitor token consumption, estimated spend, and review throughput.
+          </p>
+        </div>
+        <UsageDashboard installationId={installationId} />
+      </section>
+
+      <ReviewHistory installationId={installationId} />
     </main>
   )
 }
