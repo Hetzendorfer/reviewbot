@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  fillMissingDailyStats,
   getDateRange,
   getModelFilter,
   getPagination,
@@ -31,6 +32,52 @@ describe("getDateRange", () => {
 
   test("rejects invalid calendar dates", () => {
     expect(getDateRange("2026-02-31", "2026-03-01")).toBeNull()
+  })
+})
+
+describe("fillMissingDailyStats", () => {
+  test("fills missing UTC days with zero values", () => {
+    const range = getDateRange("2026-03-01", "2026-03-03")
+
+    expect(range).not.toBeNull()
+    expect(fillMissingDailyStats(range!, [
+      {
+        date: "2026-03-01",
+        promptTokens: 100,
+        completionTokens: 50,
+        reviewCount: 1,
+        estimatedCostUsd: 0.00125,
+      },
+      {
+        date: "2026-03-03",
+        promptTokens: 80,
+        completionTokens: 20,
+        reviewCount: 1,
+        estimatedCostUsd: 0.0007,
+      },
+    ])).toEqual([
+      {
+        date: "2026-03-01",
+        promptTokens: 100,
+        completionTokens: 50,
+        reviewCount: 1,
+        estimatedCostUsd: 0.00125,
+      },
+      {
+        date: "2026-03-02",
+        promptTokens: 0,
+        completionTokens: 0,
+        reviewCount: 0,
+        estimatedCostUsd: 0,
+      },
+      {
+        date: "2026-03-03",
+        promptTokens: 80,
+        completionTokens: 20,
+        reviewCount: 1,
+        estimatedCostUsd: 0.0007,
+      },
+    ])
   })
 })
 

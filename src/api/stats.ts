@@ -51,6 +51,14 @@ interface TokenTotalsRow {
   completionTokens?: unknown
 }
 
+interface DailyStatsEntry {
+  date: string
+  promptTokens: number
+  completionTokens: number
+  reviewCount: number
+  estimatedCostUsd: number
+}
+
 function toUtcStartOfDay(date: Date): Date {
   return new Date(Date.UTC(
     date.getUTCFullYear(),
@@ -277,6 +285,34 @@ function getCostEstimateTotal(rows: ProviderStatsRow[]): number {
   }, 0).toFixed(6))
 }
 
+export function fillMissingDailyStats(
+  range: DateRange,
+  daily: DailyStatsEntry[]
+): DailyStatsEntry[] {
+  if (daily.length === 0) {
+    return []
+  }
+
+  const dailyByDate = new Map(daily.map((entry) => [entry.date, entry]))
+  const filled: DailyStatsEntry[] = []
+  const cursor = toUtcStartOfDay(range.from)
+  const end = toUtcStartOfDay(range.to)
+
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10)
+    filled.push(dailyByDate.get(date) ?? {
+      date,
+      promptTokens: 0,
+      completionTokens: 0,
+      reviewCount: 0,
+      estimatedCostUsd: 0,
+    })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  return filled
+}
+
 export function buildEmptyStatsResponse() {
   return {
     totals: {
@@ -318,13 +354,7 @@ export function buildStatsResponse(
     }
   })
 
-  const dailyMap = new Map<string, {
-    date: string
-    promptTokens: number
-    completionTokens: number
-    reviewCount: number
-    estimatedCostUsd: number
-  }>()
+  const dailyMap = new Map<string, DailyStatsEntry>()
 
   for (const row of dailyRows) {
     const rowPromptTokens = toNumber(row.promptTokens)
@@ -467,12 +497,17 @@ export const statsRoutes = new Elysia({ prefix: "/api/installations" })
       )
       .orderBy(sql`date_trunc('day', ${reviews.createdAt} at time zone 'UTC') asc`)
 
-    return buildStatsResponse(
+    const response = buildStatsResponse(
       totalsRow,
       tokenTotalsRow,
       byProviderRows as ProviderStatsRow[],
       dailyRows as DailyStatsRow[]
     )
+
+    return {
+      ...response,
+      daily: fillMissingDailyStats(range, response.daily),
+    }
   })
   .get("/:installationId/reviews", async ({ params, query, cookie, set }) => {
     const session = await validateSession(cookie.session?.value as string | undefined)

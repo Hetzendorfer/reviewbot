@@ -17,6 +17,13 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value)
 }
 
+function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value).toLowerCase()
+}
+
 function formatDuration(value: number | null): string {
   if (value === null) {
     return '—'
@@ -34,7 +41,7 @@ function formatTokens(promptTokens: number | null, completionTokens: number | nu
     return '—'
   }
 
-  return `${formatNumber(promptTokens)} / ${formatNumber(completionTokens)}`
+  return `${formatCompactNumber(promptTokens)} / ${formatCompactNumber(completionTokens)}`
 }
 
 function formatRelativeTime(value: string): string {
