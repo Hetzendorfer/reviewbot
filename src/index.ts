@@ -10,6 +10,7 @@ import { loadConfig } from "./config.js";
 import { githubWebhookHandler } from "./api/webhooks/github.js";
 import { authRoutes } from "./api/auth.js";
 import { installationsRoutes } from "./api/installations.js";
+import { statsRoutes } from "./api/stats.js";
 import { startQueue, stopQueue, getQueueStats } from "./review/pipeline.js";
 import { getDb } from "./db/index.js";
 import { reviews } from "./db/schema.js";
@@ -75,6 +76,7 @@ async function main() {
         .use(githubWebhookHandler)
         .use(authRoutes)
         .use(installationsRoutes)
+        .use(statsRoutes)
         .get("/health", async () => {
             const dbOk = await checkDatabaseConnection();
             const queueStats = await getQueueStats();
@@ -122,13 +124,29 @@ async function main() {
                     .from(reviews)
                     .where(sql`duration_ms IS NOT NULL`);
 
+                const [tokenTotals] = await db
+                    .select({
+                        promptTokens: sql<number>`coalesce(sum(prompt_tokens), 0)`,
+                        completionTokens: sql<number>`coalesce(sum(completion_tokens), 0)`,
+                    })
+                    .from(reviews)
+                    .where(eq(reviews.status, "completed"));
+
                 const queueStats = await getQueueStats();
+
+                const totalPromptTokens = tokenTotals?.promptTokens ?? 0;
+                const totalCompletionTokens = tokenTotals?.completionTokens ?? 0;
 
                 return {
                     reviews: {
                         total: totalReviews[0]?.count ?? 0,
                         failed: failedReviews[0]?.count ?? 0,
                         avgDurationMs: Math.round(avgDuration[0]?.avg ?? 0),
+                    },
+                    tokens: {
+                        totalPromptTokens,
+                        totalCompletionTokens,
+                        totalTokens: totalPromptTokens + totalCompletionTokens,
                     },
                     queue: queueStats,
                 };
