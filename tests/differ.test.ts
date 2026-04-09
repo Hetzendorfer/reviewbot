@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { parseDiff, chunkDiffs } from "../src/review/differ.js";
+import { chunkDiffs, filterFiles, parseDiff } from "../src/review/differ.js";
 
 const SAMPLE_DIFF = `diff --git a/src/index.ts b/src/index.ts
 index abc1234..def5678 100644
@@ -62,5 +62,23 @@ describe("chunkDiffs", () => {
     const files = parseDiff(SAMPLE_DIFF);
     const chunks = chunkDiffs(files, 50); // very small limit
     expect(chunks.length).toBeGreaterThan(1);
+  });
+});
+
+describe("filterFiles", () => {
+  test("filters ignored paths and respects the file limit", () => {
+    const files = [
+      { path: "src/index.ts", hunks: "@@ -1 +1 @@" },
+      { path: "src/generated/schema.ts", hunks: "@@ -1 +1 @@" },
+      { path: "src/review/parser.ts", hunks: "@@ -1 +1 @@" },
+    ];
+
+    const filtered = filterFiles(files, ["**/generated/**"], 2);
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((file) => file.path)).toEqual([
+      "src/index.ts",
+      "src/review/parser.ts",
+    ]);
   });
 });

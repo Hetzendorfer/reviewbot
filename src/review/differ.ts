@@ -1,3 +1,5 @@
+import { minimatch } from "minimatch";
+
 export interface FileDiff {
   path: string;
   hunks: string;
@@ -32,8 +34,6 @@ export function filterFiles(
   ignorePaths: string[],
   maxFiles: number
 ): FileDiff[] {
-  const { minimatch } = require("minimatch");
-
   const filtered = files.filter((file) => {
     return !ignorePaths.some((pattern) => minimatch(file.path, pattern));
   });

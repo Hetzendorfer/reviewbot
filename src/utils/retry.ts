@@ -1,3 +1,5 @@
+import { logger } from "../logger.js";
+
 export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -31,7 +33,11 @@ export async function withRetry<T>(
       }
 
       const delay = Math.min(initialDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
-      console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+      logger.warn("Retry attempt failed", {
+        attempt,
+        delayMs: delay,
+        error: String(err),
+      });
       await sleep(delay);
     }
   }
