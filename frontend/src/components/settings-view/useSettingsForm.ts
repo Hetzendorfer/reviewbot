@@ -39,6 +39,8 @@ export function useSettingsForm(settings: Settings, installationId: number) {
     }
   }, [provider, model])
 
+  const requiresProviderApiKey = provider !== settings.llmProvider
+
   const updateProvider = (nextProvider: LlmProvider) => {
     setProvider(nextProvider)
     setModel(MODELS[nextProvider]?.[0] ?? '')
@@ -88,6 +90,7 @@ export function useSettingsForm(settings: Settings, installationId: number) {
     maxFiles,
     model,
     provider,
+    requiresProviderApiKey,
     reviewStyle,
     saving,
     status,

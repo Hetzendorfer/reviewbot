@@ -9,6 +9,7 @@ interface LlmConfigurationCardProps {
   model: string
   apiKey: string
   hasApiKey: boolean
+  requiresProviderApiKey: boolean
   onProviderChange: (provider: LlmProvider) => void
   onModelChange: (model: string) => void
   onApiKeyChange: (value: string) => void
@@ -19,6 +20,7 @@ export function LlmConfigurationCard({
   model,
   apiKey,
   hasApiKey,
+  requiresProviderApiKey,
   onProviderChange,
   onModelChange,
   onApiKeyChange,
@@ -71,15 +73,31 @@ export function LlmConfigurationCard({
 
         <div className='space-y-2'>
           <label htmlFor='apiKey' className='text-sm font-medium'>
-            API Key {hasApiKey && '(already set - leave blank to keep)'}
+            API Key{' '}
+            {requiresProviderApiKey
+              ? '(required after provider change)'
+              : hasApiKey
+                ? '(already set - leave blank to keep)'
+                : ''}
           </label>
           <Input
             id='apiKey'
             type='password'
             value={apiKey}
             onChange={(event) => onApiKeyChange(event.target.value)}
-            placeholder={hasApiKey ? '********' : 'Enter your API key'}
+            placeholder={
+              requiresProviderApiKey
+                ? 'Enter a new API key for this provider'
+                : hasApiKey
+                  ? '********'
+                  : 'Enter your API key'
+            }
           />
+          {requiresProviderApiKey && (
+            <p className='text-sm text-muted-foreground'>
+              Stored API keys are provider-specific. Enter a fresh key before saving.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

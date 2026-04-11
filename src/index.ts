@@ -38,18 +38,34 @@ async function checkDatabaseConnection(): Promise<boolean> {
     }
 }
 
-async function main() {
-    const config = loadConfig();
-    const FRONTEND_DIR = process.env.NODE_ENV === "production"
+function getFrontendDir(): string {
+    return process.env.NODE_ENV === "production"
         ? resolve(process.cwd(), "frontend/dist")
         : resolve(import.meta.dir, "../frontend/dist");
+}
 
-    logger.info(`Frontend directory: ${FRONTEND_DIR}`);
-    if (!config.METRICS_TOKEN) {
-        logger.warn("METRICS_TOKEN not set: /metrics endpoint disabled");
+export function shouldServeSpaFallback(request: Request): boolean {
+    if (request.method !== "GET") {
+        return false;
     }
 
-    const app = new Elysia()
+    const url = new URL(request.url);
+    if (
+        url.pathname === "/api" ||
+        url.pathname.startsWith("/api/") ||
+        url.pathname === "/webhooks" ||
+        url.pathname.startsWith("/webhooks/") ||
+        url.pathname.startsWith("/assets/")
+    ) {
+        return false;
+    }
+
+    const accept = request.headers.get("accept") ?? "";
+    return accept.includes("text/html");
+}
+
+export function createApp(frontendDir = getFrontendDir()) {
+    return new Elysia()
         .use(cors())
         .use(githubWebhookHandler)
         .use(authRoutes)
@@ -71,37 +87,54 @@ async function main() {
             };
         })
         .get("/assets/*", ({ params }) => {
-            const file = Bun.file(resolve(FRONTEND_DIR, "assets", params["*"]));
+            const file = Bun.file(resolve(frontendDir, "assets", params["*"]));
 
             return new Response(file, {
                 headers: { "Content-Type": file.type },
             });
         })
         .get("/", () => {
-            const indexPath = resolve(FRONTEND_DIR, "index.html");
+            const indexPath = resolve(frontendDir, "index.html");
             return new Response(Bun.file(indexPath), {
                 headers: { "Content-Type": "text/html" },
             });
         })
-        .onError(({ code, error, set }) => {
+        .onError(({ code, error, request, set }) => {
             if (code === "NOT_FOUND") {
-                const indexPath = resolve(FRONTEND_DIR, "index.html");
-                return new Response(Bun.file(indexPath), {
-                    headers: { "Content-Type": "text/html" },
-                });
+                if (shouldServeSpaFallback(request)) {
+                    const indexPath = resolve(frontendDir, "index.html");
+                    return new Response(Bun.file(indexPath), {
+                        headers: { "Content-Type": "text/html" },
+                    });
+                }
+
+                set.status = 404;
+                return { error: "Not found" };
             }
             logger.error("Server error", { code, error: String(error) });
             set.status = 500;
             return { error: "Internal server error" };
-        })
+        });
+}
+
+async function main() {
+    const config = loadConfig();
+    const FRONTEND_DIR = getFrontendDir();
+
+    logger.info(`Frontend directory: ${FRONTEND_DIR}`);
+    if (!config.METRICS_TOKEN) {
+        logger.warn("METRICS_TOKEN not set: /metrics endpoint disabled");
+    }
+
+    await startQueue();
+
+    const app = createApp(FRONTEND_DIR)
         .listen({
             port: config.PORT,
             hostname: config.HOST,
         });
 
     logger.info(`ReviewBot running at http://${config.HOST}:${config.PORT}`);
-
-    startQueue();
 
     let isShuttingDown = false;
 
@@ -125,11 +158,13 @@ async function main() {
     return app;
 }
 
-runMigrations()
-    .then(() => main())
-    .catch((err) => {
-        logger.error("Failed to start", { error: String(err) });
-        process.exit(1);
-    });
+if (import.meta.main) {
+    runMigrations()
+        .then(() => main())
+        .catch((err) => {
+            logger.error("Failed to start", { error: String(err) });
+            process.exit(1);
+        });
+}
 
 export type App = Awaited<ReturnType<typeof main>>;

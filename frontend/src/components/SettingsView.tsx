@@ -31,6 +31,7 @@ export default function SettingsView({
     maxFiles,
     model,
     provider,
+    requiresProviderApiKey,
     reviewStyle,
     saving,
     status,
@@ -56,6 +57,7 @@ export default function SettingsView({
         model={model}
         apiKey={apiKey}
         hasApiKey={hasApiKey}
+        requiresProviderApiKey={requiresProviderApiKey}
         onProviderChange={updateProvider}
         onModelChange={setModel}
         onApiKeyChange={setApiKey}

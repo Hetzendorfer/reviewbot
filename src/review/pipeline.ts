@@ -20,30 +20,52 @@ import { logger } from "../logger.js";
 import type { ReviewResult } from "../llm/types.js";
 
 let reviewQueue: PersistentQueue | null = null;
+let queueReady = false;
 
-export function startQueue(): void {
-  reviewQueue = new PersistentQueue(processReview, 3);
-  reviewQueue.recoverStaleJobs().then(() => {
-    reviewQueue!.start();
+export class QueueNotReadyError extends Error {
+  constructor(message = "Review queue is not ready") {
+    super(message);
+    this.name = "QueueNotReadyError";
+  }
+}
+
+export async function startQueue(): Promise<void> {
+  const queue = new PersistentQueue(processReview, 3);
+  reviewQueue = queue;
+  queueReady = false;
+
+  try {
+    await queue.recoverStaleJobs();
+    queue.start();
+    queueReady = true;
     logger.info("Review queue started");
-  });
+  } catch (err) {
+    reviewQueue = null;
+    queueReady = false;
+    logger.error("Failed to start review queue", { error: String(err) });
+    throw err;
+  }
 }
 
 export function stopQueue(): Promise<void> {
   if (!reviewQueue) return Promise.resolve();
+  queueReady = false;
   reviewQueue.stop();
   return reviewQueue.waitForCompletion();
 }
 
 export async function getQueueStats(): Promise<{ pending: number; processing: number; failed: number }> {
-  if (!reviewQueue) return { pending: 0, processing: 0, failed: 0 };
+  if (!reviewQueue || !queueReady) return { pending: 0, processing: 0, failed: 0 };
   return reviewQueue.getQueueStats();
 }
 
+export function isQueueReady(): boolean {
+  return queueReady;
+}
+
 export async function enqueueReview(job: JobData): Promise<void> {
-  if (!reviewQueue) {
-    logger.error("Queue not started");
-    return;
+  if (!reviewQueue || !queueReady) {
+    throw new QueueNotReadyError();
   }
 
   const db = getDb();
@@ -93,13 +115,16 @@ export async function enqueueReview(job: JobData): Promise<void> {
     return;
   }
 
-  reviewQueue.enqueue(job).catch((err) => {
+  try {
+    await reviewQueue.enqueue(job);
+  } catch (err) {
     logger.error("Failed to enqueue review", {
       repo: job.repoFullName,
       pr: job.prNumber,
       error: String(err),
     });
-  });
+    throw err;
+  }
 }
 
 async function processReview(job: JobData): Promise<void> {

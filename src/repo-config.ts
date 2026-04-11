@@ -1,6 +1,8 @@
 import YAML from "yaml";
 import type { Octokit } from "octokit";
+import { z } from "zod";
 import { fetchFileContent } from "./github/client.js";
+import { logger } from "./logger.js";
 
 export interface RepoConfig {
   ignorePaths?: string[];
@@ -8,6 +10,36 @@ export interface RepoConfig {
   maxFilesPerReview?: number;
   reviewStyle?: "inline" | "summary" | "both";
   enabled?: boolean;
+}
+
+const repoConfigSchema = z.object({
+  ignorePaths: z.array(z.string().min(1).max(256)).max(50).optional(),
+  customInstructions: z.string().max(2000).optional(),
+  maxFilesPerReview: z.number().int().min(1).max(100).optional(),
+  reviewStyle: z.enum(["inline", "summary", "both"]).optional(),
+  enabled: z.boolean().optional(),
+});
+
+export function parseRepoConfig(content: string, source = ".reviewbot.yml"): RepoConfig | null {
+  let parsed: unknown;
+
+  try {
+    parsed = YAML.parse(content);
+  } catch {
+    logger.warn("Failed to parse repo config YAML", { source });
+    return null;
+  }
+
+  const result = repoConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    logger.warn("Invalid repo config; falling back to DB defaults", {
+      source,
+      issues: result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+    });
+    return null;
+  }
+
+  return result.data;
 }
 
 export async function fetchRepoConfig(
@@ -25,12 +57,7 @@ export async function fetchRepoConfig(
   );
   if (!content) return null;
 
-  try {
-    return YAML.parse(content) as RepoConfig;
-  } catch {
-    console.warn(`Failed to parse .reviewbot.yml in ${owner}/${repo}`);
-    return null;
-  }
+  return parseRepoConfig(content, `${owner}/${repo}:.reviewbot.yml`);
 }
 
 export function mergeConfig(
