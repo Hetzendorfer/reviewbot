@@ -1,8 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { timingSafeEqual } from "crypto";
 import { resolve } from "path";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -10,9 +9,10 @@ import { loadConfig } from "./config.js";
 import { githubWebhookHandler } from "./api/webhooks/github.js";
 import { authRoutes } from "./api/auth.js";
 import { installationsRoutes } from "./api/installations.js";
+import { metricsRoutes } from "./api/metrics.js";
+import { statsRoutes } from "./api/stats.js";
 import { startQueue, stopQueue, getQueueStats } from "./review/pipeline.js";
 import { getDb } from "./db/index.js";
-import { reviews } from "./db/schema.js";
 import { logger } from "./logger.js";
 
 async function runMigrations(): Promise<void> {
@@ -38,43 +38,40 @@ async function checkDatabaseConnection(): Promise<boolean> {
     }
 }
 
-function extractBearerToken(authHeader: string | null): string | null {
-    if (!authHeader) return null;
-    const [scheme, token, ...rest] = authHeader.split(" ");
-    if (scheme !== "Bearer" || !token || rest.length > 0) return null;
-    return token;
-}
-
-function verifyMetricsToken(
-    authHeader: string | null,
-    expectedToken: string,
-): boolean {
-    const providedToken = extractBearerToken(authHeader);
-    if (!providedToken) return false;
-
-    const provided = Buffer.from(providedToken, "utf-8");
-    const expected = Buffer.from(expectedToken, "utf-8");
-    if (provided.length !== expected.length) return false;
-
-    return timingSafeEqual(provided, expected);
-}
-
-async function main() {
-    const config = loadConfig();
-    const FRONTEND_DIR = process.env.NODE_ENV === "production"
+function getFrontendDir(): string {
+    return process.env.NODE_ENV === "production"
         ? resolve(process.cwd(), "frontend/dist")
         : resolve(import.meta.dir, "../frontend/dist");
+}
 
-    logger.info(`Frontend directory: ${FRONTEND_DIR}`);
-    if (!config.METRICS_TOKEN) {
-        logger.warn("METRICS_TOKEN not set: /metrics endpoint disabled");
+export function shouldServeSpaFallback(request: Request): boolean {
+    if (request.method !== "GET") {
+        return false;
     }
 
-    const app = new Elysia()
+    const url = new URL(request.url);
+    if (
+        url.pathname === "/api" ||
+        url.pathname.startsWith("/api/") ||
+        url.pathname === "/webhooks" ||
+        url.pathname.startsWith("/webhooks/") ||
+        url.pathname.startsWith("/assets/")
+    ) {
+        return false;
+    }
+
+    const accept = request.headers.get("accept") ?? "";
+    return accept.includes("text/html");
+}
+
+export function createApp(frontendDir = getFrontendDir()) {
+    return new Elysia()
         .use(cors())
         .use(githubWebhookHandler)
         .use(authRoutes)
         .use(installationsRoutes)
+        .use(metricsRoutes)
+        .use(statsRoutes)
         .get("/health", async () => {
             const dbOk = await checkDatabaseConnection();
             const queueStats = await getQueueStats();
@@ -89,86 +86,55 @@ async function main() {
                 timestamp: new Date().toISOString(),
             };
         })
-        .get("/metrics", async ({ set, request }) => {
-            if (!config.METRICS_TOKEN) {
-                set.status = process.env.NODE_ENV === "production" ? 404 : 503;
-                return { error: "Metrics unavailable" };
-            }
-
-            if (
-                !verifyMetricsToken(
-                    request.headers.get("authorization"),
-                    config.METRICS_TOKEN,
-                )
-            ) {
-                set.status = 401;
-                return { error: "Unauthorized" };
-            }
-
-            try {
-                const db = getDb();
-
-                const totalReviews = await db
-                    .select({ count: sql<number>`count(*)` })
-                    .from(reviews);
-
-                const failedReviews = await db
-                    .select({ count: sql<number>`count(*)` })
-                    .from(reviews)
-                    .where(eq(reviews.status, "failed"));
-
-                const avgDuration = await db
-                    .select({ avg: sql<number>`avg(duration_ms)` })
-                    .from(reviews)
-                    .where(sql`duration_ms IS NOT NULL`);
-
-                const queueStats = await getQueueStats();
-
-                return {
-                    reviews: {
-                        total: totalReviews[0]?.count ?? 0,
-                        failed: failedReviews[0]?.count ?? 0,
-                        avgDurationMs: Math.round(avgDuration[0]?.avg ?? 0),
-                    },
-                    queue: queueStats,
-                };
-            } catch {
-                set.status = 503;
-                return { error: "Metrics unavailable" };
-            }
-        })
         .get("/assets/*", ({ params }) => {
-            const file = Bun.file(resolve(FRONTEND_DIR, "assets", params["*"]));
+            const file = Bun.file(resolve(frontendDir, "assets", params["*"]));
 
             return new Response(file, {
                 headers: { "Content-Type": file.type },
             });
         })
         .get("/", () => {
-            const indexPath = resolve(FRONTEND_DIR, "index.html");
+            const indexPath = resolve(frontendDir, "index.html");
             return new Response(Bun.file(indexPath), {
                 headers: { "Content-Type": "text/html" },
             });
         })
-        .onError(({ code, error, set }) => {
+        .onError(({ code, error, request, set }) => {
             if (code === "NOT_FOUND") {
-                const indexPath = resolve(FRONTEND_DIR, "index.html");
-                return new Response(Bun.file(indexPath), {
-                    headers: { "Content-Type": "text/html" },
-                });
+                if (shouldServeSpaFallback(request)) {
+                    const indexPath = resolve(frontendDir, "index.html");
+                    return new Response(Bun.file(indexPath), {
+                        headers: { "Content-Type": "text/html" },
+                    });
+                }
+
+                set.status = 404;
+                return { error: "Not found" };
             }
             logger.error("Server error", { code, error: String(error) });
             set.status = 500;
             return { error: "Internal server error" };
-        })
+        });
+}
+
+async function main() {
+    const config = loadConfig();
+    const FRONTEND_DIR = getFrontendDir();
+
+    logger.info(`Frontend directory: ${FRONTEND_DIR}`);
+    if (!config.METRICS_TOKEN) {
+        logger.warn("METRICS_TOKEN not set: /metrics endpoint disabled");
+    }
+
+    await startQueue();
+
+    const app = createApp(FRONTEND_DIR)
         .listen({
             port: config.PORT,
             hostname: config.HOST,
         });
 
     logger.info(`ReviewBot running at http://${config.HOST}:${config.PORT}`);
-
-    startQueue();
 
     let isShuttingDown = false;
 
@@ -192,11 +158,13 @@ async function main() {
     return app;
 }
 
-runMigrations()
-    .then(() => main())
-    .catch((err) => {
-        logger.error("Failed to start", { error: String(err) });
-        process.exit(1);
-    });
+if (import.meta.main) {
+    runMigrations()
+        .then(() => main())
+        .catch((err) => {
+            logger.error("Failed to start", { error: String(err) });
+            process.exit(1);
+        });
+}
 
 export type App = Awaited<ReturnType<typeof main>>;

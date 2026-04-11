@@ -5,35 +5,12 @@ import { getDb } from "../db/index.js"
 import { installations, installationSettings, sessions } from "../db/schema.js"
 import { loadConfig } from "../config.js"
 import { validateSession } from "./auth.js"
-import { encrypt, decrypt } from "../crypto.js"
+import { encrypt } from "../crypto.js"
+import {
+  getAccessToken,
+  userHasInstallationAccess,
+} from "./github-installations.js"
 import { logger } from "../logger.js"
-
-function getAccessToken(session: typeof sessions.$inferSelect): string {
-  const config = loadConfig()
-  return decrypt({
-    ciphertext: session.accessTokenEncrypted,
-    iv: session.accessTokenIv,
-    authTag: session.accessTokenAuthTag,
-  }, config.ENCRYPTION_KEY)
-}
-
-async function userHasInstallationAccess(
-  session: typeof sessions.$inferSelect,
-  installationId: number
-): Promise<boolean> {
-  try {
-    const octokit = new Octokit({ auth: getAccessToken(session) })
-    // GitHub returns 404/403 if the user does not have access to this installation,
-    // so this implicitly verifies ownership without needing to paginate all installations.
-    await octokit.request("GET /user/installations/{installation_id}/repositories", {
-      installation_id: installationId,
-      per_page: 1,
-    })
-    return true
-  } catch {
-    return false
-  }
-}
 
 const DEFAULT_SETTINGS = {
   llmProvider: "openai",
@@ -49,6 +26,14 @@ const DEFAULT_SETTINGS = {
 const MAX_INSTRUCTIONS_LENGTH = 2000
 const MAX_IGNORE_PATHS = 50
 const MAX_PATH_LENGTH = 256
+
+export function requiresNewApiKeyOnProviderChange(
+  previousProvider: string | null,
+  nextProvider: string,
+  hasNewApiKey: boolean
+): boolean {
+  return previousProvider !== null && previousProvider !== nextProvider && !hasNewApiKey
+}
 
 function validateSettings(body: Record<string, unknown>): string | null {
   if (body.customInstructions && typeof body.customInstructions === "string") {
@@ -296,8 +281,32 @@ export const installationsRoutes = new Elysia({ prefix: "/api/installations" })
       }
     }
 
+    const [existing] = await db
+      .select()
+      .from(installationSettings)
+      .where(eq(installationSettings.installationId, installation.id))
+      .limit(1)
+
     const updateData: Record<string, unknown> = { updatedAt: new Date() }
     const bodyObj = body as Record<string, unknown>
+    const nextProvider =
+      typeof bodyObj.llmProvider === "string"
+        ? bodyObj.llmProvider
+        : existing?.llmProvider ?? DEFAULT_SETTINGS.llmProvider
+    const hasNewApiKey = typeof bodyObj.apiKey === "string" && bodyObj.apiKey.length > 0
+
+    if (
+      requiresNewApiKeyOnProviderChange(
+        existing?.llmProvider ?? null,
+        nextProvider,
+        hasNewApiKey
+      )
+    ) {
+      set.status = 400
+      return {
+        error: "Changing the LLM provider requires a new API key for that provider",
+      }
+    }
 
     if (bodyObj.llmProvider) updateData.llmProvider = bodyObj.llmProvider
     if (bodyObj.llmModel) updateData.llmModel = bodyObj.llmModel
@@ -308,25 +317,20 @@ export const installationsRoutes = new Elysia({ prefix: "/api/installations" })
     if (bodyObj.maxFilesPerReview) updateData.maxFilesPerReview = bodyObj.maxFilesPerReview
     if (bodyObj.enabled !== undefined) updateData.enabled = bodyObj.enabled
 
-    if (bodyObj.apiKey && typeof bodyObj.apiKey === "string") {
-      const provider = (bodyObj.llmProvider as string | undefined) ?? "openai"
-      const result = await validateApiKey(provider, bodyObj.apiKey)
+    if (hasNewApiKey) {
+      const provider = nextProvider
+      const apiKey = bodyObj.apiKey as string
+      const result = await validateApiKey(provider, apiKey)
       if (!result.valid) {
         set.status = 400
         return { error: result.error ?? "Invalid API key" }
       }
 
-      const encrypted = encrypt(bodyObj.apiKey, config.ENCRYPTION_KEY)
+      const encrypted = encrypt(apiKey, config.ENCRYPTION_KEY)
       updateData.apiKeyEncrypted = encrypted.ciphertext
       updateData.apiKeyIv = encrypted.iv
       updateData.apiKeyAuthTag = encrypted.authTag
     }
-
-    const [existing] = await db
-      .select()
-      .from(installationSettings)
-      .where(eq(installationSettings.installationId, installation.id))
-      .limit(1)
 
     if (existing) {
       await db

@@ -1,24 +1,13 @@
-import { useEffect, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import type { Installation, LlmProvider, Settings } from '@/types'
-
-const MODELS: Record<LlmProvider, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  anthropic: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
-  gemini: ['gemini-2.0-flash', 'gemini-2.0-pro']
-}
-
-type StatusState = {
-  type: 'success' | 'error'
-  message: string
-}
+import ReviewHistory from '@/components/ReviewHistory'
+import UsageDashboard from '@/components/UsageDashboard'
+import type { Installation, Settings } from '@/types'
+import { CustomInstructionsCard } from './settings-view/CustomInstructionsCard'
+import { GeneralSettingsCard } from './settings-view/GeneralSettingsCard'
+import { LlmConfigurationCard } from './settings-view/LlmConfigurationCard'
+import { ReviewConfigurationCard } from './settings-view/ReviewConfigurationCard'
+import { SaveBar } from './settings-view/SaveBar'
+import { SettingsHeader } from './settings-view/SettingsHeader'
+import { useSettingsForm } from './settings-view/useSettingsForm'
 
 interface SettingsViewProps {
   settings: Settings
@@ -27,291 +16,80 @@ interface SettingsViewProps {
   onBack: () => void
 }
 
-function getFallbackLabel(account: string): string {
-  return account.slice(0, 2).toUpperCase() || 'RB'
-}
-
 export default function SettingsView({
   settings,
   installationId,
   installation,
   onBack
 }: SettingsViewProps) {
-  const [provider, setProvider] = useState<LlmProvider>(settings.llmProvider)
-  const [model, setModel] = useState(settings.llmModel)
-  const [reviewStyle, setReviewStyle] = useState(settings.reviewStyle)
-  const [apiKey, setApiKey] = useState('')
-  const [hasApiKey, setHasApiKey] = useState(settings.hasApiKey)
-  const [ignorePaths, setIgnorePaths] = useState(settings.ignorePaths.join(', '))
-  const [customInstructions, setCustomInstructions] = useState(settings.customInstructions)
-  const [maxFiles, setMaxFiles] = useState(settings.maxFilesPerReview)
-  const [enabled, setEnabled] = useState(settings.enabled)
-  const [status, setStatus] = useState<StatusState | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    setProvider(settings.llmProvider)
-    setModel(settings.llmModel)
-    setReviewStyle(settings.reviewStyle)
-    setApiKey('')
-    setHasApiKey(settings.hasApiKey)
-    setIgnorePaths(settings.ignorePaths.join(', '))
-    setCustomInstructions(settings.customInstructions)
-    setMaxFiles(settings.maxFilesPerReview)
-    setEnabled(settings.enabled)
-    setStatus(null)
-  }, [settings])
-
-  useEffect(() => {
-    if (!(MODELS[provider] ?? []).includes(model)) {
-      setModel(MODELS[provider]?.[0] ?? '')
-    }
-  }, [provider, model])
-
-  const save = async () => {
-    setSaving(true)
-    setStatus(null)
-
-    try {
-      const res = await fetch(`/api/installations/${installationId}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          llmProvider: provider,
-          llmModel: model,
-          reviewStyle,
-          ...(apiKey ? { apiKey } : {}),
-          ignorePaths: ignorePaths.split(',').map((path) => path.trim()).filter(Boolean),
-          customInstructions,
-          maxFilesPerReview: maxFiles,
-          enabled
-        })
-      })
-
-      const data = (await res.json()) as { error?: string }
-      if (res.ok) {
-        setStatus({ type: 'success', message: 'Settings saved.' })
-        setApiKey('')
-        setHasApiKey(true)
-      } else {
-        setStatus({ type: 'error', message: data.error ?? 'Failed to save settings.' })
-      }
-    } catch {
-      setStatus({ type: 'error', message: 'Network error while saving settings.' })
-    } finally {
-      setSaving(false)
-    }
-  }
+  const {
+    apiKey,
+    customInstructions,
+    enabled,
+    hasApiKey,
+    ignorePaths,
+    maxFiles,
+    model,
+    provider,
+    requiresProviderApiKey,
+    reviewStyle,
+    saving,
+    status,
+    save,
+    setApiKey,
+    setCustomInstructions,
+    setEnabled,
+    setIgnorePaths,
+    setMaxFiles,
+    setModel,
+    setReviewStyle,
+    updateProvider,
+  } = useSettingsForm(settings, installationId)
 
   return (
-    <main className='mx-auto max-w-3xl space-y-6 px-4 py-8'>
-      <header className='flex flex-wrap items-center gap-3'>
-        <Button variant='ghost' onClick={onBack}>
-          Back
-        </Button>
-        <h1 className='text-2xl font-semibold'>Settings</h1>
-        {installation && (
-          <div className='ml-auto flex items-center gap-2 rounded-md border px-2 py-1 text-sm text-muted-foreground'>
-            <Avatar className='h-5 w-5'>
-              <AvatarImage src={installation.avatar} alt={installation.account} />
-              <AvatarFallback>{getFallbackLabel(installation.account)}</AvatarFallback>
-            </Avatar>
-            {installation.account}
-          </div>
-        )}
-      </header>
+    <main className='mx-auto max-w-6xl space-y-8 px-4 py-8'>
+      <SettingsHeader installation={installation} onBack={onBack} />
 
-      {/* General */}
-      <Card className='border-border/60'>
-        <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Enable or disable reviews for this installation.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className='flex items-center space-x-2'>
-            <Checkbox
-              id='enabled'
-              checked={enabled}
-              onCheckedChange={(checked) => setEnabled(checked === true)}
-            />
-            <label htmlFor='enabled' className='text-sm font-medium leading-none'>
-              Enable reviews
-            </label>
-          </div>
-        </CardContent>
-      </Card>
+      <GeneralSettingsCard enabled={enabled} onEnabledChange={setEnabled} />
 
-      {/* LLM Configuration */}
-      <Card className='border-border/60'>
-        <CardHeader>
-          <CardTitle>LLM Configuration</CardTitle>
-          <CardDescription>Choose your AI provider, model, and API key.</CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <div className='space-y-2'>
-              <label htmlFor='provider' className='text-sm font-medium'>
-                Provider
-              </label>
-              <Select
-                value={provider}
-                onValueChange={(value) => {
-                  const nextProvider = value as LlmProvider
-                  setProvider(nextProvider)
-                  setModel(MODELS[nextProvider]?.[0] ?? '')
-                }}
-              >
-                <SelectTrigger id='provider'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='openai'>OpenAI</SelectItem>
-                  <SelectItem value='anthropic'>Anthropic</SelectItem>
-                  <SelectItem value='gemini'>Google Gemini</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <LlmConfigurationCard
+        provider={provider}
+        model={model}
+        apiKey={apiKey}
+        hasApiKey={hasApiKey}
+        requiresProviderApiKey={requiresProviderApiKey}
+        onProviderChange={updateProvider}
+        onModelChange={setModel}
+        onApiKeyChange={setApiKey}
+      />
 
-            <div className='space-y-2'>
-              <label htmlFor='model' className='text-sm font-medium'>
-                Model
-              </label>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger id='model'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(MODELS[provider] ?? []).map((modelName) => (
-                    <SelectItem key={modelName} value={modelName}>
-                      {modelName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <ReviewConfigurationCard
+        reviewStyle={reviewStyle}
+        maxFiles={maxFiles}
+        ignorePaths={ignorePaths}
+        onReviewStyleChange={setReviewStyle}
+        onMaxFilesChange={setMaxFiles}
+        onIgnorePathsChange={setIgnorePaths}
+      />
 
-          <div className='space-y-2'>
-            <label htmlFor='apiKey' className='text-sm font-medium'>
-              API Key {hasApiKey && '(already set - leave blank to keep)'}
-            </label>
-            <Input
-              id='apiKey'
-              type='password'
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={hasApiKey ? '********' : 'Enter your API key'}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <CustomInstructionsCard
+        customInstructions={customInstructions}
+        onCustomInstructionsChange={setCustomInstructions}
+      />
 
-      {/* Review Configuration */}
-      <Card className='border-border/60'>
-        <CardHeader>
-          <CardTitle>Review Configuration</CardTitle>
-          <CardDescription>Configure how reviews are performed.</CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <div className='space-y-2'>
-            <label htmlFor='reviewStyle' className='text-sm font-medium'>
-              Review Style
-            </label>
-            <Select
-              value={reviewStyle}
-              onValueChange={(value) => setReviewStyle(value as Settings['reviewStyle'])}
-            >
-              <SelectTrigger id='reviewStyle'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='both'>Summary + Inline</SelectItem>
-                <SelectItem value='inline'>Inline Only</SelectItem>
-                <SelectItem value='summary'>Summary Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <SaveBar saving={saving} status={status} onSave={save} />
 
-          <div className='space-y-2'>
-            <label htmlFor='maxFiles' className='text-sm font-medium'>
-              Max Files Per Review
-            </label>
-            <Input
-              id='maxFiles'
-              type='number'
-              min={1}
-              max={100}
-              value={maxFiles}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10)
-                setMaxFiles(Number.isFinite(parsed) ? parsed : 20)
-              }}
-            />
-          </div>
+      <section className='space-y-4'>
+        <div>
+          <h2 className='text-2xl font-semibold'>Usage</h2>
+          <p className='text-sm text-muted-foreground'>
+            Monitor token consumption, estimated spend, and review throughput.
+          </p>
+        </div>
+        <UsageDashboard installationId={installationId} />
+      </section>
 
-          <div className='space-y-2'>
-            <label htmlFor='ignorePaths' className='text-sm font-medium'>
-              Ignore Paths (comma-separated globs)
-            </label>
-            <Input
-              id='ignorePaths'
-              value={ignorePaths}
-              onChange={(event) => setIgnorePaths(event.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Custom Instructions */}
-      <Card className='border-border/60'>
-        <CardHeader>
-          <CardTitle>Custom Instructions</CardTitle>
-          <CardDescription>Provide additional guidance to the reviewer.</CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <div className='space-y-2'>
-            <label htmlFor='profile' className='text-sm font-medium text-muted-foreground'>
-              Profile
-            </label>
-            <Select disabled>
-              <SelectTrigger id='profile'>
-                <SelectValue placeholder='Coming soon' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='_'>Default</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='space-y-2'>
-            <label htmlFor='instructions' className='text-sm font-medium'>
-              Instructions
-            </label>
-            <Textarea
-              id='instructions'
-              value={customInstructions}
-              onChange={(event) => setCustomInstructions(event.target.value)}
-              placeholder='Additional instructions for the reviewer...'
-              rows={4}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className='flex items-center gap-4'>
-        <Button onClick={save} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Settings'}
-        </Button>
-
-        {status && (
-          <Alert
-            variant={status.type === 'error' ? 'destructive' : 'default'}
-            className='flex-1'
-          >
-            <AlertDescription>{status.message}</AlertDescription>
-          </Alert>
-        )}
-      </div>
+      <ReviewHistory installationId={installationId} />
     </main>
   )
 }

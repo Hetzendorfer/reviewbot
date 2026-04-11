@@ -51,5 +51,12 @@ export function isPullRequestEvent(
     "ready_for_review",
   ];
 
-  return validActions.includes(payload.action);
+  if (!validActions.includes(payload.action)) return false;
+
+  const draftActions = ["opened", "synchronize", "reopened"];
+  if (payload.pull_request.draft && draftActions.includes(payload.action)) {
+    return false;
+  }
+
+  return true;
 }

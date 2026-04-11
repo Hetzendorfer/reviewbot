@@ -3,6 +3,8 @@ import type { LLMProvider, ReviewRequest, ReviewResult } from "../types.js";
 import { SYSTEM_PROMPT, buildUserPrompt } from "../prompts.js";
 import { parseReviewResponse } from "../../review/parser.js";
 
+const MAX_TOKENS = 8192;
+
 export class AnthropicProvider implements LLMProvider {
   readonly name = "anthropic";
 
@@ -14,7 +16,7 @@ export class AnthropicProvider implements LLMProvider {
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       messages: [
         {

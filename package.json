@@ -7,7 +7,7 @@
     "dev": "bun run --watch src/index.ts",
     "dev:frontend": "bun run --filter reviewbot-frontend dev",
     "build:frontend": "bun run --filter reviewbot-frontend build",
-    "typecheck": "bunx tsc --noEmit && bun run --filter reviewbot-frontend typecheck",
+    "typecheck": "bunx tsc --noEmit && bunx tsc --noEmit -p frontend/tsconfig.json",
     "start": "bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -15,22 +15,22 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@elysiajs/cors": "^1.2.0",
-    "@google/generative-ai": "^0.24.0",
-    "@octokit/auth-app": "^7.1.4",
-    "@octokit/webhooks": "^13.4.2",
+    "@elysiajs/cors": "^1.4.1",
+    "@google/generative-ai": "^0.24.1",
+    "@octokit/auth-app": "^7.2.2",
+    "@octokit/webhooks": "^13.9.1",
     "drizzle-orm": "^0.38.4",
-    "elysia": "^1.2.12",
-    "minimatch": "^10.0.1",
-    "octokit": "^4.1.2",
-    "openai": "^4.82.0",
-    "postgres": "^3.4.5",
-    "yaml": "^2.7.0",
-    "zod": "^3.24.2"
+    "elysia": "^1.4.28",
+    "minimatch": "^10.2.5",
+    "octokit": "^4.1.4",
+    "openai": "^4.104.0",
+    "postgres": "^3.4.9",
+    "yaml": "^2.8.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.4",
-    "drizzle-kit": "^0.30.4",
-    "typescript": "^5.7.3"
+    "@types/bun": "^1.3.12",
+    "drizzle-kit": "^0.30.6",
+    "typescript": "^5.9.3"
   }
 }
