@@ -10,7 +10,11 @@ import {
 import { enqueueReview, QueueNotReadyError } from "../../review/pipeline.js";
 import { recordWebhookTrace } from "../../observability/webhook-traces.js";
 import { logger } from "../../logger.js";
-import { fetchPullRequestMetadata, getOctokit } from "../../github/client.js";
+import {
+  addEyesReactionToIssueComment,
+  fetchPullRequestMetadata,
+  getOctokit,
+} from "../../github/client.js";
 
 type WebhookContext = {
   body: unknown;
@@ -26,6 +30,7 @@ type WebhookDependencies = {
   isReviewRequestCommentEventFn?: typeof isReviewRequestCommentEvent;
   getOctokitFn?: typeof getOctokit;
   fetchPullRequestMetadataFn?: typeof fetchPullRequestMetadata;
+  reactToIssueCommentFn?: typeof addEyesReactionToIssueComment;
   loggerInstance?: typeof logger;
   loadConfigFn?: () => Pick<
     ReturnType<typeof loadConfig>,
@@ -54,6 +59,7 @@ function hasReviewableCommentPayload(
       payload.issue?.number &&
       payload.issue?.pull_request &&
       payload.installation?.id &&
+      payload.comment?.id &&
       payload.comment?.body
   );
 }
@@ -66,6 +72,7 @@ export async function handleGitHubWebhook(
     isReviewRequestCommentEventFn = isReviewRequestCommentEvent,
     getOctokitFn = getOctokit,
     fetchPullRequestMetadataFn = fetchPullRequestMetadata,
+    reactToIssueCommentFn = addEyesReactionToIssueComment,
     loggerInstance = logger,
     loadConfigFn = () => loadConfig(),
     verifyWebhookSignatureFn = verifyWebhookSignature,
@@ -336,6 +343,44 @@ export async function handleGitHubWebhook(
       stage: "queued",
       detail: "Mention-triggered review job accepted into queue",
     });
+
+    try {
+      const octokit = await getOctokitFn(payload.installation.id);
+      await reactToIssueCommentFn(
+        octokit,
+        owner,
+        repo,
+        payload.comment.id
+      );
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action,
+        repoFullName: payload.repository.full_name,
+        installationId: payload.installation.id,
+        prNumber: payload.issue.number,
+        stage: "reaction_added",
+        detail: "Added 👀 reaction to review request comment",
+      });
+    } catch (err) {
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action,
+        repoFullName: payload.repository.full_name,
+        installationId: payload.installation.id,
+        prNumber: payload.issue.number,
+        stage: "reaction_failed",
+        detail: err instanceof Error ? err.message : String(err),
+        ok: false,
+      });
+      loggerInstance.warn("Failed to add eyes reaction to review request comment", {
+        installationId: payload.installation.id,
+        repo: payload.repository.full_name,
+        pr: payload.issue.number,
+        error: String(err),
+      });
+    }
 
     return { status: "queued" };
   }

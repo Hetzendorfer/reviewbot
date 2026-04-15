@@ -78,6 +78,7 @@ function buildMentionWebhookContext(body = "@reviewbot review") {
       },
     },
     comment: {
+      id: 777,
       body,
       user: {
         type: "User",
@@ -176,6 +177,9 @@ describe("github webhook route", () => {
 
   test("queues a review when directly mentioned on a pull request comment", async () => {
     const context = buildMentionWebhookContext();
+    let reactionOwner = "";
+    let reactionRepo = "";
+    let reactionCommentId = -1;
     const response = await handleGitHubWebhook(context, {
       enqueueReviewFn: async () => {
         if (currentEnqueueError) {
@@ -190,6 +194,11 @@ describe("github webhook route", () => {
         headSha: "abc123",
         baseBranch: "main",
       }),
+      reactToIssueCommentFn: async (_octokit, owner, repo, commentId) => {
+        reactionOwner = owner;
+        reactionRepo = repo;
+        reactionCommentId = commentId;
+      },
       loggerInstance: testLogger as never,
       loadConfigFn: loadWebhookConfig,
       verifyWebhookSignatureFn: () => true,
@@ -197,6 +206,9 @@ describe("github webhook route", () => {
 
     expect(context.set.status).toBeUndefined();
     expect(response).toEqual({ status: "queued" });
+    expect(reactionOwner).toBe("acme");
+    expect(reactionRepo).toBe("reviewbot");
+    expect(reactionCommentId).toBe(777);
   });
 
   test("returns 503 when a mention-triggered review cannot enter the queue", async () => {

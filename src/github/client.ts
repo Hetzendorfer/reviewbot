@@ -70,6 +70,20 @@ export async function postReview(
   });
 }
 
+export async function addEyesReactionToIssueComment(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  commentId: number
+): Promise<void> {
+  await octokit.request("POST /repos/{owner}/{repo}/issues/comments/{comment_id}/reactions", {
+    owner,
+    repo,
+    comment_id: commentId,
+    content: "eyes",
+  });
+}
+
 export async function fetchFileContent(
   octokit: Octokit,
   owner: string,

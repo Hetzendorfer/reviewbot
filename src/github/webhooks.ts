@@ -47,6 +47,7 @@ export interface IssueCommentEvent {
     };
   };
   comment: {
+    id: number;
     body: string;
     user?: {
       type?: string;

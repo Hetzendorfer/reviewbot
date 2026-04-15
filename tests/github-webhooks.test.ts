@@ -45,6 +45,7 @@ function makeCommentPayload(
       },
     },
     comment: {
+      id: 777,
       body,
       user: {
         type: userType,
