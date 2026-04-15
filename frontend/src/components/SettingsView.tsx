@@ -1,5 +1,6 @@
 import ReviewHistory from '@/components/ReviewHistory'
 import UsageDashboard from '@/components/UsageDashboard'
+import WebhookDiagnosticsPanel from '@/components/WebhookDiagnosticsPanel'
 import type { Installation, Settings } from '@/types'
 import { CustomInstructionsCard } from './settings-view/CustomInstructionsCard'
 import { GeneralSettingsCard } from './settings-view/GeneralSettingsCard'
@@ -78,6 +79,8 @@ export default function SettingsView({
       />
 
       <SaveBar saving={saving} status={status} onSave={save} />
+
+      <WebhookDiagnosticsPanel installationId={installationId} />
 
       <section className='space-y-4'>
         <div>

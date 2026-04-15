@@ -11,6 +11,7 @@ import { authRoutes } from "./api/auth.js";
 import { installationsRoutes } from "./api/installations.js";
 import { metricsRoutes } from "./api/metrics.js";
 import { statsRoutes } from "./api/stats.js";
+import { diagnosticsRoutes } from "./api/diagnostics.js";
 import { startQueue, stopQueue, getQueueStats } from "./review/pipeline.js";
 import { getDb } from "./db/index.js";
 import { logger } from "./logger.js";
@@ -72,6 +73,7 @@ export function createApp(frontendDir = getFrontendDir()) {
         .use(installationsRoutes)
         .use(metricsRoutes)
         .use(statsRoutes)
+        .use(diagnosticsRoutes)
         .get("/health", async () => {
             const dbOk = await checkDatabaseConnection();
             const queueStats = await getQueueStats();

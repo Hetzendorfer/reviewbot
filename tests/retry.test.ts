@@ -1,21 +1,20 @@
-import { describe, expect, test, mock } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
 const warnings: Array<{ message: string; context?: Record<string, unknown> }> = [];
 
-mock.module("../src/logger.js", () => ({
-  logger: {
-    warn: (message: string, context?: Record<string, unknown>) => {
-      warnings.push({ message, context });
-    },
-  },
-}));
-
+const { logger } = await import("../src/logger.js");
 const { isRetryableError, withRetry } = await import("../src/utils/retry.js");
+const originalWarn = logger.warn;
 
 describe("retry helpers", () => {
-  test("withRetry retries and logs each failure", async () => {
+  beforeEach(() => {
     warnings.length = 0;
+    logger.warn = (message: string, context?: Record<string, unknown>) => {
+      warnings.push({ message, context });
+    };
+  });
 
+  test("withRetry retries and logs each failure", async () => {
     let attempts = 0;
     const result = await withRetry(
       async () => {
@@ -40,4 +39,8 @@ describe("retry helpers", () => {
     expect(isRetryableError(new Error("request timeout"))).toBe(true);
     expect(isRetryableError(new Error("permission denied"))).toBe(false);
   });
+});
+
+afterAll(() => {
+  logger.warn = originalWarn;
 });

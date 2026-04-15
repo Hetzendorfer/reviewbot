@@ -18,6 +18,7 @@ interface UpdateCheckOptions {
 }
 
 const CHECK_NAME = "ReviewBot";
+const REVIEW_START_EMOJI = "👀";
 
 export async function createCheckRun(
   octokit: Octokit,
@@ -30,8 +31,8 @@ export async function createCheckRun(
     head_sha: options.headSha,
     status: "queued",
     output: {
-      title: "Review queued",
-      summary: `Review is queued for processing. PR #${options.prNumber}`,
+      title: `${REVIEW_START_EMOJI} Review queued`,
+      summary: `${REVIEW_START_EMOJI} Review is queued for processing. PR #${options.prNumber}`,
     },
   });
 
@@ -66,8 +67,8 @@ export async function markCheckInProgress(
     repo,
     checkRunId,
     status: "in_progress",
-    title: "Review in progress",
-    summary: "Analyzing your PR changes...",
+    title: `${REVIEW_START_EMOJI} Review in progress`,
+    summary: `${REVIEW_START_EMOJI} Analyzing your PR changes...`,
   });
 }
 

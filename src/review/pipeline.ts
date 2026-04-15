@@ -18,6 +18,7 @@ import {
 import { withRetry, isRetryableError } from "../utils/retry.js";
 import { logger } from "../logger.js";
 import type { ReviewResult } from "../llm/types.js";
+import { recordWebhookTrace } from "../observability/webhook-traces.js";
 
 let reviewQueue: PersistentQueue | null = null;
 let queueReady = false;
@@ -140,6 +141,13 @@ async function processReview(job: JobData): Promise<void> {
   });
 
   log.info("Starting review");
+  recordWebhookTrace({
+    installationId: job.installationId,
+    repoFullName: job.repoFullName,
+    prNumber: job.prNumber,
+    stage: "review_started",
+    detail: "Worker started processing queued review",
+  });
 
   const octokit = await withRetry(
     () => getOctokit(job.installationId),
@@ -163,6 +171,14 @@ async function processReview(job: JobData): Promise<void> {
     }
   } catch (err) {
     log.error("Failed to create check run", { error: String(err) });
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "check_run_failed",
+      detail: err instanceof Error ? err.message : String(err),
+      ok: false,
+    });
   }
 
   const [installation] = await db
@@ -173,6 +189,14 @@ async function processReview(job: JobData): Promise<void> {
 
   if (!installation) {
     log.warn("Installation not found");
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "installation_not_found",
+      detail: "Webhook arrived but installation is not stored locally yet",
+      ok: false,
+    });
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Installation not found");
@@ -191,6 +215,14 @@ async function processReview(job: JobData): Promise<void> {
 
   if (!settings || !settings.enabled) {
     log.info("Reviews disabled for installation");
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "reviews_disabled",
+      detail: "Installation settings disable reviews",
+      ok: false,
+    });
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "Reviews disabled for this installation");
@@ -203,6 +235,14 @@ async function processReview(job: JobData): Promise<void> {
 
   if (!settings.apiKeyEncrypted || !settings.apiKeyIv || !settings.apiKeyAuthTag) {
     log.warn("No API key configured");
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "no_api_key",
+      detail: "No API key configured for this installation",
+      ok: false,
+    });
     if (checkRunId) {
       try {
         await markCheckFailed(octokit, job.owner, job.repo, checkRunId, "No API key configured");
@@ -216,8 +256,23 @@ async function processReview(job: JobData): Promise<void> {
   if (checkRunId) {
     try {
       await markCheckInProgress(octokit, job.owner, job.repo, checkRunId);
+      recordWebhookTrace({
+        installationId: job.installationId,
+        repoFullName: job.repoFullName,
+        prNumber: job.prNumber,
+        stage: "check_in_progress",
+        detail: "GitHub check run updated to in progress",
+      });
     } catch (err) {
       log.error("Failed to update check run", { error: String(err) });
+      recordWebhookTrace({
+        installationId: job.installationId,
+        repoFullName: job.repoFullName,
+        prNumber: job.prNumber,
+        stage: "check_update_failed",
+        detail: err instanceof Error ? err.message : String(err),
+        ok: false,
+      });
     }
   }
 
@@ -245,6 +300,14 @@ async function processReview(job: JobData): Promise<void> {
     const mergedConfig = mergeConfig(settings, repoConfig);
 
     if (!mergedConfig.enabled) {
+      recordWebhookTrace({
+        installationId: job.installationId,
+        repoFullName: job.repoFullName,
+        prNumber: job.prNumber,
+        stage: "repo_disabled",
+        detail: "Repo config disabled review execution",
+        ok: false,
+      });
       await db
         .update(reviews)
         .set({ status: "completed", summaryComment: "Skipped (disabled via repo config)" })
@@ -264,6 +327,13 @@ async function processReview(job: JobData): Promise<void> {
     );
 
     if (filtered.length === 0) {
+      recordWebhookTrace({
+        installationId: job.installationId,
+        repoFullName: job.repoFullName,
+        prNumber: job.prNumber,
+        stage: "no_reviewable_files",
+        detail: "Diff contained no reviewable files after filters",
+      });
       await db
         .update(reviews)
         .set({ status: "completed", summaryComment: "No reviewable files." })
@@ -354,6 +424,14 @@ async function processReview(job: JobData): Promise<void> {
       );
     }
 
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "review_completed",
+      detail: `Completed with ${combinedResult.comments.length} finding(s)`,
+    });
+
     log.info("Review completed", {
       durationMs,
       commentCount: combinedResult.comments.length,
@@ -363,6 +441,14 @@ async function processReview(job: JobData): Promise<void> {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     log.error("Review failed", { error: errorMessage });
+    recordWebhookTrace({
+      installationId: job.installationId,
+      repoFullName: job.repoFullName,
+      prNumber: job.prNumber,
+      stage: "review_failed",
+      detail: errorMessage,
+      ok: false,
+    });
 
     await db
       .update(reviews)

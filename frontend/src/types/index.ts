@@ -78,3 +78,59 @@ export interface PaginatedReviews {
     totalPages: number
   }
 }
+
+export interface WebhookTrace {
+  id: string
+  timestamp: string
+  deliveryId: string | null
+  event: string | null
+  action: string | null
+  repoFullName: string | null
+  installationId: number | null
+  prNumber: number | null
+  stage: string
+  detail: string | null
+  ok: boolean
+}
+
+export interface ReviewJobDiagnostic {
+  id: number
+  repoFullName: string
+  prNumber: number
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  errorMessage: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export interface ReviewDiagnostic {
+  id: number
+  repoFullName: string
+  prNumber: number
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  errorMessage: string | null
+  inlineCommentCount: number
+  createdAt: string
+}
+
+export interface InstallationDiagnostics {
+  appSlug: string
+  triggerPhrase: string
+  webhookEndpoint: string
+  queue: {
+    pending: number
+    processing: number
+    failed: number
+  }
+  installation: {
+    existsLocally: boolean
+    enabled: boolean
+    hasApiKey: boolean
+    provider: LlmProvider | null
+    model: string | null
+  }
+  recentWebhookTraces: WebhookTrace[]
+  recentJobs: ReviewJobDiagnostic[]
+  recentReviews: ReviewDiagnostic[]
+}

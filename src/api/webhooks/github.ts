@@ -8,6 +8,7 @@ import {
   type IssueCommentEvent,
 } from "../../github/webhooks.js";
 import { enqueueReview, QueueNotReadyError } from "../../review/pipeline.js";
+import { recordWebhookTrace } from "../../observability/webhook-traces.js";
 import { logger } from "../../logger.js";
 import { fetchPullRequestMetadata, getOctokit } from "../../github/client.js";
 
@@ -79,8 +80,16 @@ export async function handleGitHubWebhook(
         : JSON.stringify(body);
   const signature = request.headers.get("x-hub-signature-256");
   const event = request.headers.get("x-github-event");
+  const deliveryId = request.headers.get("x-github-delivery");
 
   if (!verifyWebhookSignatureFn(rawBody, signature, config.GITHUB_WEBHOOK_SECRET)) {
+    recordWebhookTrace({
+      deliveryId,
+      event,
+      stage: "rejected_invalid_signature",
+      detail: "GitHub webhook signature verification failed",
+      ok: false,
+    });
     loggerInstance.warn("Invalid webhook signature");
     set.status = 401;
     return { error: "Invalid signature" };
@@ -95,9 +104,29 @@ export async function handleGitHubWebhook(
   try {
     payload = JSON.parse(rawBody) as Partial<PullRequestEvent>;
   } catch {
+    recordWebhookTrace({
+      deliveryId,
+      event,
+      stage: "rejected_invalid_json",
+      detail: "Webhook body was not valid JSON",
+      ok: false,
+    });
     set.status = 400;
     return { error: "Invalid JSON payload" };
   }
+
+  recordWebhookTrace({
+    deliveryId,
+    event,
+    action: payload.action ?? null,
+    repoFullName: payload.repository?.full_name ?? null,
+    installationId: payload.installation?.id ?? null,
+    prNumber: "number" in payload && typeof payload.number === "number"
+      ? payload.number
+      : payload.issue?.number ?? null,
+    stage: "received",
+    detail: "Deployment received webhook request",
+  });
 
   loggerInstance.info("Webhook received", {
     event,
@@ -107,6 +136,17 @@ export async function handleGitHubWebhook(
 
   if (isPullRequestEventFn(event, payload as PullRequestEvent)) {
     if (!hasReviewablePullRequestPayload(payload)) {
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action ?? null,
+        repoFullName: payload.repository?.full_name ?? null,
+        installationId: payload.installation?.id ?? null,
+        prNumber: payload.number ?? null,
+        stage: "rejected_invalid_payload",
+        detail: "pull_request payload missing required fields",
+        ok: false,
+      });
       set.status = 400;
       return { error: "Invalid webhook payload" };
     }
@@ -129,6 +169,17 @@ export async function handleGitHubWebhook(
         err instanceof QueueNotReadyError ||
         (err instanceof Error && err.name === "QueueNotReadyError")
       ) {
+        recordWebhookTrace({
+          deliveryId,
+          event,
+          action: payload.action,
+          repoFullName: payload.repository.full_name,
+          installationId: payload.installation.id,
+          prNumber: payload.number,
+          stage: "queue_unavailable",
+          detail: "Webhook accepted but review queue was not ready",
+          ok: false,
+        });
         loggerInstance.warn("Webhook rejected because review queue is not ready", {
           installationId: payload.installation.id,
           repo: payload.repository.full_name,
@@ -138,6 +189,17 @@ export async function handleGitHubWebhook(
         return { error: "Review queue unavailable" };
       }
 
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action,
+        repoFullName: payload.repository.full_name,
+        installationId: payload.installation.id,
+        prNumber: payload.number,
+        stage: "enqueue_failed",
+        detail: err instanceof Error ? err.message : String(err),
+        ok: false,
+      });
       loggerInstance.error("Failed to enqueue review", {
         installationId: payload.installation.id,
         repo: payload.repository.full_name,
@@ -154,6 +216,17 @@ export async function handleGitHubWebhook(
       pr: payload.number,
     });
 
+    recordWebhookTrace({
+      deliveryId,
+      event,
+      action: payload.action,
+      repoFullName: payload.repository.full_name,
+      installationId: payload.installation.id,
+      prNumber: payload.number,
+      stage: "queued",
+      detail: "Review job accepted into queue",
+    });
+
     return { status: "queued" };
   }
 
@@ -165,6 +238,17 @@ export async function handleGitHubWebhook(
     )
   ) {
     if (!hasReviewableCommentPayload(payload)) {
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action ?? null,
+        repoFullName: payload.repository?.full_name ?? null,
+        installationId: payload.installation?.id ?? null,
+        prNumber: payload.issue?.number ?? null,
+        stage: "rejected_invalid_payload",
+        detail: "issue_comment payload missing required fields",
+        ok: false,
+      });
       set.status = 400;
       return { error: "Invalid webhook payload" };
     }
@@ -195,6 +279,17 @@ export async function handleGitHubWebhook(
         err instanceof QueueNotReadyError ||
         (err instanceof Error && err.name === "QueueNotReadyError")
       ) {
+        recordWebhookTrace({
+          deliveryId,
+          event,
+          action: payload.action,
+          repoFullName: payload.repository.full_name,
+          installationId: payload.installation.id,
+          prNumber: payload.issue.number,
+          stage: "queue_unavailable",
+          detail: "Mention-triggered review reached webhook but queue was not ready",
+          ok: false,
+        });
         loggerInstance.warn("Mention-triggered review rejected because queue is not ready", {
           installationId: payload.installation.id,
           repo: payload.repository.full_name,
@@ -204,6 +299,17 @@ export async function handleGitHubWebhook(
         return { error: "Review queue unavailable" };
       }
 
+      recordWebhookTrace({
+        deliveryId,
+        event,
+        action: payload.action,
+        repoFullName: payload.repository.full_name,
+        installationId: payload.installation.id,
+        prNumber: payload.issue.number,
+        stage: "enqueue_failed",
+        detail: err instanceof Error ? err.message : String(err),
+        ok: false,
+      });
       loggerInstance.error("Failed to enqueue mention-triggered review", {
         installationId: payload.installation.id,
         repo: payload.repository.full_name,
@@ -220,8 +326,30 @@ export async function handleGitHubWebhook(
       pr: payload.issue.number,
     });
 
+    recordWebhookTrace({
+      deliveryId,
+      event,
+      action: payload.action,
+      repoFullName: payload.repository.full_name,
+      installationId: payload.installation.id,
+      prNumber: payload.issue.number,
+      stage: "queued",
+      detail: "Mention-triggered review job accepted into queue",
+    });
+
     return { status: "queued" };
   }
+
+  recordWebhookTrace({
+    deliveryId,
+    event,
+    action: payload.action ?? null,
+    repoFullName: payload.repository?.full_name ?? null,
+    installationId: payload.installation?.id ?? null,
+    prNumber: payload.issue?.number ?? payload.number ?? null,
+    stage: "ignored",
+    detail: "Webhook did not match a configured review trigger",
+  });
 
   return { status: "ignored" };
 }
