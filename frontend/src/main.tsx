@@ -1,14 +1,25 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { RouterProvider, createRouter, useRouter } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
 import { useAuth } from '@/hooks/useAuth'
 import './index.css'
 
 const noop = () => { /* placeholder until auth loads */ }
 
+function RedirectToLogin() {
+  const router = useRouter()
+
+  React.useEffect(() => {
+    void router.navigate({ to: '/login', replace: true })
+  }, [router])
+
+  return null
+}
+
 const router = createRouter({
   routeTree,
+  defaultNotFoundComponent: RedirectToLogin,
   context: {
     user: null,
     loading: true,
