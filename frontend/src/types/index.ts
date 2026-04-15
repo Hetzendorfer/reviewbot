@@ -11,7 +11,7 @@ export interface Installation {
   selection: string
 }
 
-export type LlmProvider = 'openai' | 'anthropic' | 'gemini'
+export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'opencode'
 
 export interface Settings {
   installationId: number

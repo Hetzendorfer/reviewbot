@@ -14,16 +14,18 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@ai-sdk/anthropic": "^2.0.12",
+    "@ai-sdk/google": "^2.0.18",
+    "@ai-sdk/openai": "^2.0.31",
+    "@ai-sdk/openai-compatible": "^0.2.12",
     "@elysiajs/cors": "^1.4.1",
-    "@google/generative-ai": "^0.24.1",
     "@octokit/auth-app": "^7.2.2",
     "@octokit/webhooks": "^13.9.1",
+    "ai": "^5.0.66",
     "drizzle-orm": "^0.38.4",
     "elysia": "^1.4.28",
     "minimatch": "^10.2.5",
     "octokit": "^4.1.4",
-    "openai": "^4.104.0",
     "postgres": "^3.4.9",
     "yaml": "^2.8.3",
     "zod": "^3.25.76"

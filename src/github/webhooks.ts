@@ -38,6 +38,28 @@ export interface PullRequestEvent {
   };
 }
 
+export interface IssueCommentEvent {
+  action: string;
+  issue: {
+    number: number;
+    pull_request?: {
+      url: string;
+    };
+  };
+  comment: {
+    body: string;
+    user?: {
+      type?: string;
+    };
+  };
+  repository: {
+    full_name: string;
+  };
+  installation: {
+    id: number;
+  };
+}
+
 export function isPullRequestEvent(
   event: string,
   payload: PullRequestEvent
@@ -59,4 +81,28 @@ export function isPullRequestEvent(
   }
 
   return true;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function hasReviewRequestMention(
+  body: string,
+  appSlug = "reviewbot"
+): boolean {
+  return new RegExp(`(?:^|\\s)@${escapeRegExp(appSlug)}\\s+review\\b`, "i").test(body);
+}
+
+export function isReviewRequestCommentEvent(
+  event: string,
+  payload: IssueCommentEvent,
+  appSlug = "reviewbot"
+): boolean {
+  if (event !== "issue_comment") return false;
+  if (payload.action !== "created") return false;
+  if (!payload.issue.pull_request) return false;
+  if ((payload.comment.user?.type ?? "").toLowerCase() === "bot") return false;
+
+  return hasReviewRequestMention(payload.comment.body, appSlug);
 }

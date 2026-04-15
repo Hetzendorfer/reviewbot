@@ -160,14 +160,14 @@ describe("statsRoutes", () => {
       [
         {
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 2000,
           completionTokens: 800,
           reviewCount: 2,
         },
         {
           provider: "anthropic",
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-4-5",
           promptTokens: 500,
           completionTokens: 100,
           reviewCount: 1,
@@ -177,7 +177,7 @@ describe("statsRoutes", () => {
         {
           date: "2026-03-01",
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 1000,
           completionTokens: 400,
           reviewCount: 1,
@@ -185,7 +185,7 @@ describe("statsRoutes", () => {
         {
           date: "2026-03-03",
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 1000,
           completionTokens: 400,
           reviewCount: 1,
@@ -193,7 +193,7 @@ describe("statsRoutes", () => {
         {
           date: "2026-03-03",
           provider: "anthropic",
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-4-5",
           promptTokens: 500,
           completionTokens: 100,
           reviewCount: 1,
@@ -215,20 +215,20 @@ describe("statsRoutes", () => {
         reviewCount: 3,
         failedCount: 1,
         avgDurationMs: 2300,
-        estimatedCostUsd: 0.025,
+        estimatedCostUsd: 0.02,
       },
       byProvider: [
         {
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 2000,
           completionTokens: 800,
           reviewCount: 2,
-          estimatedCostUsd: 0.022,
+          estimatedCostUsd: 0.017,
         },
         {
           provider: "anthropic",
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-4-5",
           promptTokens: 500,
           completionTokens: 100,
           reviewCount: 1,
@@ -241,7 +241,7 @@ describe("statsRoutes", () => {
           promptTokens: 1000,
           completionTokens: 400,
           reviewCount: 1,
-          estimatedCostUsd: 0.011,
+          estimatedCostUsd: 0.0085,
         },
         {
           date: "2026-03-02",
@@ -255,7 +255,7 @@ describe("statsRoutes", () => {
           promptTokens: 1500,
           completionTokens: 500,
           reviewCount: 2,
-          estimatedCostUsd: 0.014,
+          estimatedCostUsd: 0.0115,
         },
       ],
     })
@@ -277,14 +277,14 @@ describe("buildStatsResponse", () => {
       [
         {
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 2000,
           completionTokens: 800,
           reviewCount: 3,
         },
         {
           provider: "anthropic",
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-4-5",
           promptTokens: 1000,
           completionTokens: 400,
           reviewCount: 1,
@@ -294,7 +294,7 @@ describe("buildStatsResponse", () => {
         {
           date: "2026-03-10",
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 1200,
           completionTokens: 500,
           reviewCount: 2,
@@ -302,7 +302,7 @@ describe("buildStatsResponse", () => {
         {
           date: "2026-03-10",
           provider: "anthropic",
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-4-5",
           promptTokens: 300,
           completionTokens: 100,
           reviewCount: 1,
@@ -310,7 +310,7 @@ describe("buildStatsResponse", () => {
         {
           date: "2026-03-11",
           provider: "openai",
-          model: "gpt-4o",
+          model: "gpt-5.4",
           promptTokens: 1500,
           completionTokens: 600,
           reviewCount: 1,
@@ -321,25 +321,25 @@ describe("buildStatsResponse", () => {
     expect(result.totals).toEqual({
       promptTokens: 3000,
       completionTokens: 1200,
-      totalTokens: 4200,
-      reviewCount: 4,
-      failedCount: 1,
-      avgDurationMs: 2800,
-      estimatedCostUsd: 0.031,
-    })
+        totalTokens: 4200,
+        reviewCount: 4,
+        failedCount: 1,
+        avgDurationMs: 2800,
+        estimatedCostUsd: 0.026,
+      })
 
-    expect(result.byProvider).toEqual([
+      expect(result.byProvider).toEqual([
       {
         provider: "openai",
-        model: "gpt-4o",
+        model: "gpt-5.4",
         promptTokens: 2000,
         completionTokens: 800,
         reviewCount: 3,
-        estimatedCostUsd: 0.022,
+        estimatedCostUsd: 0.017,
       },
       {
         provider: "anthropic",
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-5",
         promptTokens: 1000,
         completionTokens: 400,
         reviewCount: 1,
@@ -353,14 +353,14 @@ describe("buildStatsResponse", () => {
         promptTokens: 1500,
         completionTokens: 600,
         reviewCount: 3,
-        estimatedCostUsd: 0.0159,
+        estimatedCostUsd: 0.0129,
       },
       {
         date: "2026-03-11",
         promptTokens: 1500,
         completionTokens: 600,
         reviewCount: 1,
-        estimatedCostUsd: 0.0165,
+        estimatedCostUsd: 0.01275,
       },
     ])
   })

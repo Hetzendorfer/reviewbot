@@ -3,10 +3,13 @@ import { loadConfig } from "../../config.js";
 import {
   verifyWebhookSignature,
   isPullRequestEvent,
+  isReviewRequestCommentEvent,
   type PullRequestEvent,
+  type IssueCommentEvent,
 } from "../../github/webhooks.js";
 import { enqueueReview, QueueNotReadyError } from "../../review/pipeline.js";
 import { logger } from "../../logger.js";
+import { fetchPullRequestMetadata, getOctokit } from "../../github/client.js";
 
 type WebhookContext = {
   body: unknown;
@@ -19,8 +22,14 @@ type WebhookContext = {
 type WebhookDependencies = {
   enqueueReviewFn?: typeof enqueueReview;
   isPullRequestEventFn?: typeof isPullRequestEvent;
+  isReviewRequestCommentEventFn?: typeof isReviewRequestCommentEvent;
+  getOctokitFn?: typeof getOctokit;
+  fetchPullRequestMetadataFn?: typeof fetchPullRequestMetadata;
   loggerInstance?: typeof logger;
-  loadConfigFn?: () => Pick<ReturnType<typeof loadConfig>, "GITHUB_WEBHOOK_SECRET">;
+  loadConfigFn?: () => Pick<
+    ReturnType<typeof loadConfig>,
+    "GITHUB_WEBHOOK_SECRET" | "GITHUB_APP_SLUG"
+  >;
   verifyWebhookSignatureFn?: typeof verifyWebhookSignature;
 };
 
@@ -36,11 +45,26 @@ function hasReviewablePullRequestPayload(
   );
 }
 
+function hasReviewableCommentPayload(
+  payload: Partial<IssueCommentEvent>
+): payload is IssueCommentEvent {
+  return Boolean(
+    payload.repository?.full_name &&
+      payload.issue?.number &&
+      payload.issue?.pull_request &&
+      payload.installation?.id &&
+      payload.comment?.body
+  );
+}
+
 export async function handleGitHubWebhook(
   { body, set, request }: WebhookContext,
   {
     enqueueReviewFn = enqueueReview,
     isPullRequestEventFn = isPullRequestEvent,
+    isReviewRequestCommentEventFn = isReviewRequestCommentEvent,
+    getOctokitFn = getOctokit,
+    fetchPullRequestMetadataFn = fetchPullRequestMetadata,
     loggerInstance = logger,
     loadConfigFn = () => loadConfig(),
     verifyWebhookSignatureFn = verifyWebhookSignature,
@@ -67,7 +91,7 @@ export async function handleGitHubWebhook(
     return { error: "Missing event header" };
   }
 
-  let payload: Partial<PullRequestEvent>;
+  let payload: Partial<PullRequestEvent & IssueCommentEvent>;
   try {
     payload = JSON.parse(rawBody) as Partial<PullRequestEvent>;
   } catch {
@@ -128,6 +152,72 @@ export async function handleGitHubWebhook(
       installationId: payload.installation.id,
       repo: payload.repository.full_name,
       pr: payload.number,
+    });
+
+    return { status: "queued" };
+  }
+
+  if (
+    isReviewRequestCommentEventFn(
+      event,
+      payload as IssueCommentEvent,
+      config.GITHUB_APP_SLUG
+    )
+  ) {
+    if (!hasReviewableCommentPayload(payload)) {
+      set.status = 400;
+      return { error: "Invalid webhook payload" };
+    }
+
+    const [owner, repo] = payload.repository.full_name.split("/");
+
+    try {
+      const octokit = await getOctokitFn(payload.installation.id);
+      const pullRequest = await fetchPullRequestMetadataFn(
+        octokit,
+        owner,
+        repo,
+        payload.issue.number
+      );
+
+      await enqueueReviewFn({
+        installationId: payload.installation.id,
+        owner,
+        repo,
+        prNumber: payload.issue.number,
+        prTitle: pullRequest.title,
+        commitSha: pullRequest.headSha,
+        baseBranch: pullRequest.baseBranch,
+        repoFullName: payload.repository.full_name,
+      });
+    } catch (err) {
+      if (
+        err instanceof QueueNotReadyError ||
+        (err instanceof Error && err.name === "QueueNotReadyError")
+      ) {
+        loggerInstance.warn("Mention-triggered review rejected because queue is not ready", {
+          installationId: payload.installation.id,
+          repo: payload.repository.full_name,
+          pr: payload.issue.number,
+        });
+        set.status = 503;
+        return { error: "Review queue unavailable" };
+      }
+
+      loggerInstance.error("Failed to enqueue mention-triggered review", {
+        installationId: payload.installation.id,
+        repo: payload.repository.full_name,
+        pr: payload.issue.number,
+        error: String(err),
+      });
+      set.status = 500;
+      return { error: "Failed to queue review" };
+    }
+
+    loggerInstance.info("Mention-triggered review queued", {
+      installationId: payload.installation.id,
+      repo: payload.repository.full_name,
+      pr: payload.issue.number,
     });
 
     return { status: "queued" };

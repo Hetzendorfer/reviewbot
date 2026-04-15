@@ -2,11 +2,13 @@ import type { LLMProvider } from "./types.js";
 import { OpenAIProvider } from "./providers/openai.js";
 import { AnthropicProvider } from "./providers/anthropic.js";
 import { GeminiProvider } from "./providers/gemini.js";
+import { OpenCodeProvider } from "./providers/opencode.js";
 
 const providers = new Map<string, LLMProvider>([
   ["openai", new OpenAIProvider()],
   ["anthropic", new AnthropicProvider()],
   ["gemini", new GeminiProvider()],
+  ["opencode", new OpenCodeProvider()],
 ]);
 
 export function getProvider(name: string): LLMProvider {

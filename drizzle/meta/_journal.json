@@ -22,6 +22,13 @@
       "when": 1771435294569,
       "tag": "0002_bigint_check_run_id",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775939640000,
+      "tag": "0003_current_model_defaults",
+      "breakpoints": true
     }
   ]
 }

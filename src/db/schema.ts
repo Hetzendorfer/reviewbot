@@ -13,6 +13,7 @@ export const llmProviderEnum = pgEnum("llm_provider", [
   "openai",
   "anthropic",
   "gemini",
+  "opencode",
 ]);
 
 export const reviewStyleEnum = pgEnum("review_style", [
@@ -44,7 +45,7 @@ export const installationSettings = pgTable("installation_settings", {
     .notNull()
     .unique(),
   llmProvider: llmProviderEnum("llm_provider").default("openai").notNull(),
-  llmModel: text("llm_model").default("gpt-4o").notNull(),
+  llmModel: text("llm_model").default("gpt-5.4").notNull(),
   reviewStyle: reviewStyleEnum("review_style").default("both").notNull(),
   apiKeyEncrypted: text("api_key_encrypted"),
   apiKeyIv: text("api_key_iv"),

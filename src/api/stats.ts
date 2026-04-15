@@ -12,7 +12,7 @@ import {
 const DEFAULT_HISTORY_LIMIT = 20
 const MAX_HISTORY_LIMIT = 100
 const DEFAULT_RANGE_DAYS = 30
-const LLM_PROVIDERS = ["openai", "anthropic", "gemini"] as const
+const LLM_PROVIDERS = ["openai", "anthropic", "gemini", "opencode"] as const
 
 const REVIEW_STATUSES = ["pending", "processing", "completed", "failed"] as const
 type ReviewStatusFilter = typeof REVIEW_STATUSES[number] | "all"

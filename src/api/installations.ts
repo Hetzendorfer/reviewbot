@@ -11,10 +11,16 @@ import {
   userHasInstallationAccess,
 } from "./github-installations.js"
 import { logger } from "../logger.js"
+import { generateText } from "ai"
+import {
+  createProviderModel,
+  getValidationModelId,
+  isProviderName,
+} from "../llm/provider-factory.js"
 
 const DEFAULT_SETTINGS = {
   llmProvider: "openai",
-  llmModel: "gpt-4o",
+  llmModel: "gpt-5.4",
   reviewStyle: "both",
   hasApiKey: false,
   ignorePaths: [".lock", "*.min.js", "*.min.css"],
@@ -68,35 +74,17 @@ async function validateApiKey(
   apiKey: string
 ): Promise<{ valid: boolean; error?: string }> {
   try {
-    switch (provider) {
-      case "openai": {
-        const { OpenAI } = await import("openai")
-        const client = new OpenAI({ apiKey })
-        await client.models.list()
-        return { valid: true }
-      }
-      case "anthropic": {
-        const Anthropic = (await import("@anthropic-ai/sdk")).default
-        const client = new Anthropic({ apiKey })
-        await client.messages.countTokens({
-          model: "claude-haiku-4-5-20251001",
-          messages: [{ role: "user", content: "hi" }],
-        })
-        return { valid: true }
-      }
-      case "gemini": {
-        const { GoogleGenerativeAI } = await import("@google/generative-ai")
-        const genAI = new GoogleGenerativeAI(apiKey)
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
-        await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: "hi" }] }],
-          generationConfig: { maxOutputTokens: 1 },
-        })
-        return { valid: true }
-      }
-      default:
-        return { valid: false, error: "Unknown provider" }
+    if (!isProviderName(provider)) {
+      return { valid: false, error: "Unknown provider" }
     }
+
+    await generateText({
+      model: createProviderModel(provider, apiKey, getValidationModelId(provider)),
+      prompt: "Reply with OK.",
+      temperature: 0,
+    })
+
+    return { valid: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     return { valid: false, error: `API key validation failed: ${message}` }

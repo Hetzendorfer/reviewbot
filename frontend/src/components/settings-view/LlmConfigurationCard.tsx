@@ -48,6 +48,7 @@ export function LlmConfigurationCard({
                 <SelectItem value='openai'>OpenAI</SelectItem>
                 <SelectItem value='anthropic'>Anthropic</SelectItem>
                 <SelectItem value='gemini'>Google Gemini</SelectItem>
+                <SelectItem value='opencode'>OpenCode Zen</SelectItem>
               </SelectContent>
             </Select>
           </div>

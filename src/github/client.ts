@@ -21,6 +21,25 @@ export async function fetchPRDiff(
   return response.data as unknown as string;
 }
 
+export async function fetchPullRequestMetadata(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<{ title: string; headSha: string; baseBranch: string }> {
+  const response = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
+
+  return {
+    title: response.data.title,
+    headSha: response.data.head.sha,
+    baseBranch: response.data.base.ref,
+  };
+}
+
 export interface ReviewComment {
   path: string;
   line: number;

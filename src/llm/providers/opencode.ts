@@ -4,8 +4,8 @@ import { SYSTEM_PROMPT, buildUserPrompt } from "../prompts.js";
 import { createProviderModel } from "../provider-factory.js";
 import { buildReviewResult } from "./shared.js";
 
-export class AnthropicProvider implements LLMProvider {
-  readonly name = "anthropic";
+export class OpenCodeProvider implements LLMProvider {
+  readonly name = "opencode";
 
   async review(
     request: ReviewRequest,
@@ -13,7 +13,7 @@ export class AnthropicProvider implements LLMProvider {
     model: string
   ): Promise<ReviewResult> {
     const response = await generateText({
-      model: createProviderModel("anthropic", apiKey, model),
+      model: createProviderModel("opencode", apiKey, model),
       system: SYSTEM_PROMPT,
       prompt: buildUserPrompt(
         request.prTitle,

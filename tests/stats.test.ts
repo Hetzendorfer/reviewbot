@@ -90,6 +90,7 @@ describe("getProviderFilter", () => {
     expect(getProviderFilter("openai")).toBe("openai")
     expect(getProviderFilter("anthropic")).toBe("anthropic")
     expect(getProviderFilter("gemini")).toBe("gemini")
+    expect(getProviderFilter("opencode")).toBe("opencode")
   })
 
   test("rejects invalid providers", () => {
@@ -99,7 +100,7 @@ describe("getProviderFilter", () => {
 
 describe("getModelFilter", () => {
   test("accepts trimmed models", () => {
-    expect(getModelFilter(" gpt-4o ")).toBe("gpt-4o")
+    expect(getModelFilter(" gpt-5.4 ")).toBe("gpt-5.4")
   })
 
   test("rejects empty or oversized models", () => {

@@ -5,14 +5,13 @@ interface ModelPricing {
 
 // TODO: Externalize pricing so model rates can be updated without code changes.
 const MODEL_PRICING_USD_PER_1K: Record<string, ModelPricing> = {
-  "gpt-4o": { promptUsdPer1k: 0.005, completionUsdPer1k: 0.015 },
-  "gpt-4o-mini": { promptUsdPer1k: 0.00015, completionUsdPer1k: 0.0006 },
-  "gpt-4-turbo": { promptUsdPer1k: 0.01, completionUsdPer1k: 0.03 },
-  "claude-sonnet-4-6": { promptUsdPer1k: 0.003, completionUsdPer1k: 0.015 },
-  "claude-opus-4-6": { promptUsdPer1k: 0.015, completionUsdPer1k: 0.075 },
-  "claude-haiku-4-5-20251001": { promptUsdPer1k: 0.0008, completionUsdPer1k: 0.004 },
-  "gemini-2.0-flash": { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0004 },
-  "gemini-2.0-pro": { promptUsdPer1k: 0.00125, completionUsdPer1k: 0.005 }
+  "gpt-5.4": { promptUsdPer1k: 0.0025, completionUsdPer1k: 0.015 },
+  "claude-sonnet-4-5": { promptUsdPer1k: 0.003, completionUsdPer1k: 0.015 },
+  // Gemini 2.5 Pro standard pricing for prompts <= 200k tokens.
+  "gemini-2.5-pro": { promptUsdPer1k: 0.00125, completionUsdPer1k: 0.01 },
+  "glm-5": { promptUsdPer1k: 0.001, completionUsdPer1k: 0.0032 },
+  "kimi-k2.5": { promptUsdPer1k: 0.0006, completionUsdPer1k: 0.003 },
+  "minimax-m2.5": { promptUsdPer1k: 0.0003, completionUsdPer1k: 0.0012 }
 }
 
 export function estimateCostUsd(

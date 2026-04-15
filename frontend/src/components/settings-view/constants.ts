@@ -1,9 +1,10 @@
 import type { LlmProvider } from '@/types'
 
 export const MODELS: Record<LlmProvider, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  anthropic: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
-  gemini: ['gemini-2.0-flash', 'gemini-2.0-pro']
+  openai: ['gpt-5.4'],
+  anthropic: ['claude-sonnet-4-5'],
+  gemini: ['gemini-2.5-pro'],
+  opencode: ['glm-5', 'kimi-k2.5', 'minimax-m2.5']
 }
 
 export function getFallbackLabel(account: string): string {

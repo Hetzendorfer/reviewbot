@@ -37,6 +37,7 @@ mock.module("../src/config.js", () => ({
   loadConfig: () => ({
     ENCRYPTION_KEY: "0".repeat(64),
   }),
+  getPrivateKey: () => "test-private-key",
 }));
 
 mock.module("../src/crypto.js", () => ({
@@ -45,6 +46,7 @@ mock.module("../src/crypto.js", () => ({
     iv: "iv",
     authTag: "authTag",
   }),
+  decrypt: () => "decrypted",
 }));
 
 mock.module("../src/db/index.js", () => ({
@@ -100,7 +102,7 @@ describe("installations settings route", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           llmProvider: "anthropic",
-          llmModel: "claude-sonnet-4-6",
+          llmModel: "claude-sonnet-4-5",
           reviewStyle: "both",
           enabled: true,
         }),
@@ -132,7 +134,7 @@ describe("installations settings route", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           llmProvider: "openai",
-          llmModel: "gpt-4o-mini",
+          llmModel: "gpt-5.4",
           reviewStyle: "summary",
           enabled: true,
         }),
@@ -144,7 +146,7 @@ describe("installations settings route", () => {
     expect(currentUpdateCalls).toHaveLength(1);
     expect(currentUpdateCalls[0]).toMatchObject({
       llmProvider: "openai",
-      llmModel: "gpt-4o-mini",
+      llmModel: "gpt-5.4",
       reviewStyle: "summary",
       enabled: true,
     });
