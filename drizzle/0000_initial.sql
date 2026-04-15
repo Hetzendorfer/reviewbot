@@ -1,11 +1,11 @@
-CREATE TYPE "public"."llm_provider" AS ENUM('openai', 'anthropic', 'gemini');
+CREATE TYPE "public"."llm_provider" AS ENUM('openai', 'anthropic', 'gemini', 'opencode');
 CREATE TYPE "public"."review_status" AS ENUM('pending', 'processing', 'completed', 'failed');
 CREATE TYPE "public"."review_style" AS ENUM('inline', 'summary', 'both');
 CREATE TABLE "installation_settings" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"installation_id" integer NOT NULL,
 	"llm_provider" "llm_provider" DEFAULT 'openai' NOT NULL,
-	"llm_model" text DEFAULT 'gpt-4o' NOT NULL,
+	"llm_model" text DEFAULT 'gpt-5.4' NOT NULL,
 	"review_style" "review_style" DEFAULT 'both' NOT NULL,
 	"api_key_encrypted" text,
 	"api_key_iv" text,

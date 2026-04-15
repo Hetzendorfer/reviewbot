@@ -33,7 +33,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'gpt-4o'"
+          "default": "'gpt-5.4'"
         },
         "review_style": {
           "name": "review_style",
@@ -523,7 +523,8 @@
       "values": [
         "openai",
         "anthropic",
-        "gemini"
+        "gemini",
+        "opencode"
       ]
     },
     "public.review_status": {
