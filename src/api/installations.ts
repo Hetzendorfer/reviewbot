@@ -17,6 +17,7 @@ import {
   getValidationModelId,
   isProviderName,
 } from "../llm/provider-factory.js"
+import { generateOpenCodeText } from "../llm/providers/opencode-client.js"
 
 const DEFAULT_SETTINGS = {
   llmProvider: "openai",
@@ -71,15 +72,30 @@ function validateSettings(body: Record<string, unknown>): string | null {
 
 async function validateApiKey(
   provider: string,
-  apiKey: string
+  apiKey: string,
+  modelId?: string
 ): Promise<{ valid: boolean; error?: string }> {
   try {
     if (!isProviderName(provider)) {
       return { valid: false, error: "Unknown provider" }
     }
 
+    const validationModel = modelId ?? getValidationModelId(provider)
+
+    if (provider === "opencode") {
+      await generateOpenCodeText(
+        apiKey,
+        validationModel,
+        "You validate API connectivity. Reply with OK.",
+        "Reply with OK.",
+        0
+      )
+
+      return { valid: true }
+    }
+
     await generateText({
-      model: createProviderModel(provider, apiKey, getValidationModelId(provider)),
+      model: createProviderModel(provider, apiKey, validationModel),
       prompt: "Reply with OK.",
       temperature: 0,
     })
@@ -308,7 +324,11 @@ export const installationsRoutes = new Elysia({ prefix: "/api/installations" })
     if (hasNewApiKey) {
       const provider = nextProvider
       const apiKey = bodyObj.apiKey as string
-      const result = await validateApiKey(provider, apiKey)
+      const modelId =
+        typeof bodyObj.llmModel === "string" && bodyObj.llmModel.length > 0
+          ? bodyObj.llmModel
+          : undefined
+      const result = await validateApiKey(provider, apiKey, modelId)
       if (!result.valid) {
         set.status = 400
         return { error: result.error ?? "Invalid API key" }
